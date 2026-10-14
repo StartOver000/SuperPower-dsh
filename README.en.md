@@ -28,14 +28,14 @@ user configuration.
 A **plugin bundle** for DeepSeek Harness (DSH). Installing it registers the
 15 skills below into the host skill registry, so every agent session in your
 profile sees them in its skill catalog and can load them with the `skill`
-tool. Skill content is synced from upstream **obra/superpowers v6.4.2**.
+tool. Skill content is synced from upstream **obra/superpowers v7.0.0**.
 
 ### Simplest: one command
 
 No global `dsh` install required. Run this from any directory:
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add github:LayneChai/superpowers-dsh
+npx @deepseek-ai/dsh plugin --profile web add github:StartOver000/SuperPower-dsh
 ```
 
 Then restart `npx @deepseek-ai/dsh web` (or `dsh web`) and refresh the browser.
@@ -46,7 +46,7 @@ Open the DeepSeek Harness web UI, start a new conversation, and send this
 message:
 
 ```
-Please install the plugin from this link: https://github.com/LayneChai/superpowers-dsh
+Please install the plugin from this link: https://github.com/StartOver000/SuperPower-dsh
 ```
 
 The agent will run the install for you (`dsh plugin --profile web add` →
@@ -55,31 +55,28 @@ type a command. Afterwards you can ask it to run
 `dsh --profile web --dump-config` and confirm a `superpowers-dsh` row is
 present.
 
-### Install from npm (recommended — one command)
+### Install from npm (upstream package)
 
-The package is published on npm as `superpowers-dsh` (synced to the
-npmmirror mirror for mainland China):
+The npm package `superpowers-dsh@0.2.0` is the upstream parent's v6.4.2 release; it does not include this fork's changes:
 
 ```sh
-dsh plugin --profile web add superpowers-dsh
+dsh plugin --profile web add superpowers-dsh@0.2.0
 ```
 
-> Use the `dsh plugin` form — a plain `npm install superpowers-dsh` installs
-> the package as a library in the current directory but does **not** register
-> it into any DeepSeek Harness profile, so the skills would never load.
+To install this repository's v0.2.1 / upstream skill v7.0.0, use the GitHub command above. This fork has not published a separate npm package.
 
 ### Install from GitHub
 
 ```sh
 # from anywhere
-dsh plugin --profile web add https://github.com/LayneChai/superpowers-dsh.git
+dsh plugin --profile web add https://github.com/StartOver000/SuperPower-dsh.git
 ```
 
 ### Install from a tarball or a local folder
 
 ```sh
-# tarball (e.g. the release asset superpowers-dsh-0.1.0.tgz)
-dsh plugin --profile web add C:\path\to\superpowers-dsh-0.1.0.tgz
+# tarball (e.g. one created locally with npm pack)
+dsh plugin --profile web add C:\path\to\superpowers-dsh-VERSION.tgz
 
 # or the unpacked package folder (pnpm links it, so edits take effect on restart)
 dsh plugin --profile web add C:\path\to\superpowers-dsh
@@ -107,7 +104,7 @@ A successful install looks like this:
 Point `--profile` at whichever profile you run:
 
 ```sh
-dsh plugin --profile headless add superpowers-dsh
+dsh plugin --profile headless add https://github.com/StartOver000/SuperPower-dsh.git
 dsh --profile headless --dump-config
 ```
 
@@ -120,9 +117,10 @@ dsh plugin --profile web remove superpowers-dsh
 
 ### Notes
 
-- Installers in mainland China can set the npm mirror first — it makes `dsh
-  plugin add superpowers-dsh` fast:
-  `npm config set registry https://registry.npmmirror.com`
+- If installing the upstream npm package described above (`superpowers-dsh@0.2.0`),
+  mainland China users can set the npmmirror registry first:
+  `npm config set registry https://registry.npmmirror.com`; use
+  `dsh plugin add superpowers-dsh@0.2.0`.
 - A plugin installed from a folder or `file:` spec is linked, not copied:
   changes to that folder take effect after the next profile restart.
 - Consumers need **no npm account and no 2FA** — installing is a plain
@@ -130,33 +128,23 @@ dsh plugin --profile web remove superpowers-dsh
 
 ## DSH version compatibility
 
-**Bottom line: compatible with every DSH version published on npm, verified
-end-to-end on DSH `0.2.0-rc.2` (the current `latest`). No known
-incompatibilities.**
-
-Checked 2026-10-03. npm dist-tags: `latest` = `next` = `0.2.0-rc.2`,
-`alpha` = `0.2.1-alpha.1`.
+**Latest runtime check (2026-10-14):** the real `SkillRegistry` from `@deepseek-ai/dsh-skill 0.2.0-rc.2` inside the local DeepSeek Harness `app.asar` listed and loaded all 15 skills. The plugin rank (550) is below the bundled rank (600). The archive omits the `.d.ts` file at the path declared by the SDK manifest, so the static type-contract check was explicitly skipped.
 
 ### Support matrix
 
 | Check | Result |
 | --- | --- |
-| DSH interfaces this plugin uses | ① `ctx.skills.registerProvider(...)` (skill provider registration) ② `dsh.bundle.patch` (a bundle mounting its own `cordis.patch.yml`) |
-| Published versions carrying them | **31 released versions each** of `@deepseek-ai/dsh-skill` and `@deepseek-ai/dsh-app-boot` |
-| Per-version audit | **31 / 31 identical** — from the first release `0.0.1-rc.1` through the newest `0.2.1-alpha.1`, no signature or semantics changed |
-| End-to-end run | `lib/index.js` mounted into the **real `SkillRegistry`** of local DSH `0.2.0-rc.2`: `list()` returned 15 skills and every `get()` returned a body and a `resourceBase` |
-| This plugin's version | `0.2.0` (skill content synced from obra/superpowers `v6.4.2`) |
-| Runtime dependencies | None. Node built-ins only, so a DSH dependency-tree change cannot break it |
-| Node.js | Verified on `v22.22.2`; DSH declares no `engines`, and neither does this plugin |
+| DSH interfaces this plugin uses | `ctx.skills.registerProvider(...)` (skill provider registration) and `dsh.bundle.patch` (a bundle mounting its own `cordis.patch.yml`) |
+| Current runtime check | The real `SkillRegistry` from `@deepseek-ai/dsh-skill 0.2.0-rc.2` listed 15 skills; `get()` returned each body and directory resource base |
+| Static type contract | `lib/types/index.d.ts` is absent from the `app.asar` package; the checker reports this as skipped, not as verified |
+| This plugin's version | `0.2.1` (local fork, not separately published; skill content synced from obra/superpowers `v7.0.0`) |
+| Runtime dependencies | None. Node built-ins only |
+| Node.js | The check used the DSH-bundled Node `v24.21.0`; neither DSH nor this plugin declares an `engines` range |
 
 ### Known compatibility notes
 
-- **No known incompatibilities.** Since `0.1.7-rc.2` DSH has a plugin
-  compatibility gate (`evaluatePluginCompatibility`): it **only inspects the
-  `@deepseek-ai/dsh*` peerDependencies a plugin declares** and skips the whole
-  bundle when a range does not match. This plugin declares no peerDependencies,
-  so the gate **never blocks it** — which also means DSH does not version-check
-  it for you, so re-run the audit below after a DSH upgrade.
+- **This v7 sync did not change the DSH provider code**; the runtime check against the SDK extracted from `app.asar` passed. The static contract was not verified because the archive omitted the declaration file.
+- DSH releases since `0.1.7-rc.2` include the `evaluatePluginCompatibility` gate. It only inspects a plugin's declared `@deepseek-ai/dsh*` peerDependencies and skips the bundle when a declared range does not match. This plugin declares none, so the gate does not version-check it; rerun the check below after a DSH upgrade.
 - **Same-name precedence is deliberate**: the plugin registers at
   `PACKAGED_SKILL_RANK = 550` while DSH's bundled root is
   `BUNDLED_SKILL_RANK = 600` (lower wins), so **your own skill wins a
@@ -165,13 +153,11 @@ Checked 2026-10-03. npm dist-tags: `latest` = `next` = `0.2.0-rc.2`,
   (Git Bash); the Node helpers (`server.cjs`, `render-graphs.js`) run
   everywhere. The prose invokes bundled scripts through their interpreter
   (`bash scripts/...`), so it does not depend on Unix executable bits.
-- The install method does not affect compatibility: npm, GitHub, and a linked
-  local folder all load the same bundle declaration.
+- For this fork, GitHub and a linked local folder load this fork's bundle. The same-named npm package belongs to the parent repository; see above.
 
 ### How to re-verify compatibility
 
-One command re-runs every check above — including the real-registry mount —
-against **the DSH you actually have installed**:
+The default is `$DSH_PROFILE_DIR/node_modules` when the active profile provides `DSH_PROFILE_DIR`; otherwise it is `$DSH_HOME/profiles/node_modules` (`~/.dsh/profiles/node_modules` when `DSH_HOME` is unset). If your profile uses another location, pass its actual `node_modules` path or set `$DSH_NODE_MODULES`:
 
 ```sh
 node scripts/check-dsh-compat.mjs
@@ -179,22 +165,24 @@ node scripts/check-dsh-compat.mjs
 node scripts/check-dsh-compat.mjs D:\path\to\profile\node_modules
 ```
 
-Output on this machine:
+Current runtime check output (SDK path abbreviated):
 
 ```
 dsh SDK      : @deepseek-ai/dsh-skill 0.2.0-rc.2
 mounted      : 15 skills listed and read through the real SkillRegistry
 rank         : PACKAGED_SKILL_RANK=550 is below BUNDLED_SKILL_RANK=600
+note         : SDK type declarations are not present at .../lib/types/index.d.ts; static contract skipped
 
-check-dsh-compat: OK — this plugin matches the installed DSH SDK
+check-dsh-compat: OK — runtime contracts match; static contract was not available
 ```
 
-It checks, in order: that the SDK is present and which version it is → that the
-installed SDK's own type declarations still declare the provider interface this
-plugin implements (`registerProvider`, `SkillProvider.list/get`,
-`SkillCandidate`, `SkillResourceBase`, the `'custom'` source bucket) → that
-`lib/index.js` really mounts into `SkillRegistry` and every skill reads back →
-the rank relationship. Any failure exits 1 and names the contract that changed.
+The checker confirms the SDK is present and reports its version. If declarations
+are included, it checks the interface used by this plugin (`registerProvider`,
+`SkillProvider.list/get`, `SkillCandidate`, `SkillResourceBase`, and the `'custom'`
+source bucket). It then mounts `lib/index.js` in the real `SkillRegistry`, reads
+back every skill, and compares ranks using the SDK runtime's exported
+`BUNDLED_SKILL_RANK`. When `.d.ts` files are absent, only the static check is
+skipped and clearly reported; runtime mount or rank failures still exit 1.
 
 > The conclusion holds for the DSH version it was verified against. On a newer
 > DSH, run the command above first: if upstream changes the skill interface it
@@ -237,7 +225,7 @@ the rank relationship. Any failure exits 1 and names the contract that changed.
 - **Zero runtime dependencies** — the plugin imports only Node built-ins and
   consumes the injected `ctx.skills` service interface.
 
-## Upstream sync (currently obra/superpowers v6.4.2)
+## Upstream sync (currently obra/superpowers v7.0.0)
 
 `skills/` is **generated output** — do not hand-edit it. The sync lives in two
 places; change those and re-run:
@@ -250,59 +238,28 @@ places; change those and re-run:
   (`using-superpowers/references/dsh-tools.md`) copied over the synced tree.
 
 ```sh
-# 1. Fetch the upstream release (git-over-https is blocked on some networks;
-#    codeload works)
-mkdir -p .upstream/superpowers
-curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v6.4.2 \
-  | tar -xz -C .upstream/superpowers --strip-components=1
+# 1. Fetch the pinned upstream release into a tag-specific directory so old files cannot linger
+mkdir -p .upstream/superpowers-v7.0.0
+curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v7.0.0 \
+  | tar -xz -C .upstream/superpowers-v7.0.0 --strip-components=1
 
-# 2. Replay the sync
-node scripts/sync-from-upstream.mjs .upstream/superpowers
+# 2. Replay the sync; package.json dsh.superpowersUpstream must match the checkout
+node scripts/sync-from-upstream.mjs .upstream/superpowers-v7.0.0
 
 # 3. Verify (provider lists every skill, frontmatter is valid, no dangling refs)
 node scripts/verify-skills.mjs
 
-# 4. Compatibility (replays the contract and the real-registry mount against
-#    the DSH you have installed)
+# 4. Compatibility (replays the contract and real-registry mount against your installed DSH)
 node scripts/check-dsh-compat.mjs
 ```
 
-What this sync brought in from upstream:
+The sync stops without replacing `skills/` when the recorded version, upstream skill set, harness-reference set, or any adaptation anchor does not match. During replacement it keeps the previous tree as a recovery directory and rolls it back if installing the staged tree fails; if a recovery directory is already present, it stops for manual inspection. GitHub Actions reruns the pinned v7.0.0 sync and skill checks on Linux and Windows, then fails if generated files drift.
 
-- **New skill `diagnosing-superpowers`** (v6.4.1): when a session goes wrong,
-  locate the transcripts on disk and report what happened with `path:line`
-  evidence; build a scrubbed bundle or a GitHub issue draft on request. The DSH
-  transcript location and decompression recipe are recorded in
-  `skills/diagnosing-superpowers/references/session-discovery.md` and
-  `skills/using-superpowers/references/dsh-tools.md`.
-- **`executing-plans` rebuilt as Native (inline) execution** (v6.4.1): no
-  check-in every few tasks; the session implements every task itself, then one
-  whole-branch review at the end. Shares SDD's workspace and ledger, and adds
-  `scripts/task-start` / `scripts/task-done`.
-- **`writing-plans`** (v6.4.1 + v6.4.2): the saved plan is reviewed before
-  anything runs; a new `Review Focus` section names the inputs or failure modes
-  the spec implies but no task's tests exercise; `No Placeholders` became
-  `What a Step Contains` (test steps give assertions, code steps give the
-  signature and file, verification steps give the command and its passing
-  output), self-review gained a proportion check, and
-  `plan-document-reviewer-prompt.md` is gone.
-- **`brainstorming`** (v6.4.1): establish why your partner wants the thing
-  before proposing features, reflect the intent back for correction, and tie
-  approval to the actual design and planning stages.
-- **Code review** (v6.4.1): reviewers judge behavior the spec is silent on by
-  what a reasonable person would expect, plus a "Declined to judge" list the
-  executor rules on; the `BASE_SHA` alternative is now
-  `git merge-base origin/main HEAD`.
-- **`test-driven-development`** (v6.4.1): the project's suite defines green, not
-  just your test file; run the project's test command and report every failure
-  by name.
-- **`subagent-driven-development`** (v6.4.1): a workspace records its owning
-  plan so same-basename plans stop colliding; `review-package` rejects empty or
-  non-descendant ranges (exit 3).
-- **Executable-bit fix** (v6.4.1): skill prose invokes bundled scripts through
-  their interpreter (`bash scripts/foo.sh`, `node render-graphs.js`); this port
-  extends that to the helpers `task-start` / `task-done` call each other with
-  (Windows has no Unix exec bit at all).
+What changed in this v7.0.0 sync:
+
+- `brainstorming` was substantially rewritten. Its project-design flow adds a separate builder review and ships the new `builder-check-prompt.md` alongside the skill.
+- Upstream now uses the relative path `visual-companion.md` directly in `brainstorming/SKILL.md`, so the port no longer needs a rewrite for that path; the DSH-specific Windows note is still applied by the sync transform.
+- The catalog remains at 15 skills. The sync script stops for review if the upstream skill set, harness-reference files, or any remaining adaptation anchor changes.
 
 ## Porting notes (vs. upstream obra/superpowers)
 

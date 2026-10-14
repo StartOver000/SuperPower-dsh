@@ -26,14 +26,14 @@ agent preset 的作用域链都会合并这些技能。技能正文随包分发
 
 这是 DeepSeek Harness 的**插件包**。安装后会把下面的 15 个技能注册进
 host 技能注册表，你 profile 里的每个 agent 会话都能在技能目录中看到它们，
-并可用 `skill` 工具加载。技能内容同步自上游 **obra/superpowers v6.4.2**。
+并可用 `skill` 工具加载。技能内容同步自上游 **obra/superpowers v7.0.0**。
 
 ### 最简单：一条命令
 
 不需要先全局安装 `dsh`，在任意目录执行：
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web add github:LayneChai/superpowers-dsh
+npx @deepseek-ai/dsh plugin --profile web add github:StartOver000/SuperPower-dsh
 ```
 
 装完后重启 `npx @deepseek-ai/dsh web`（或 `dsh web`），刷新浏览器即可。
@@ -43,37 +43,35 @@ npx @deepseek-ai/dsh plugin --profile web add github:LayneChai/superpowers-dsh
 打开 DeepSeek Harness（Web 界面），新建对话，把下面这句话发给它：
 
 ```
-帮我安装这个链接里边的插件：https://github.com/LayneChai/superpowers-dsh
+帮我安装这个链接里边的插件：https://github.com/StartOver000/SuperPower-dsh
 ```
 
 Agent 会自动完成安装（`dsh plugin --profile web add` → 重启 profile →
 验证技能注册），无需你手动敲任何命令。装完后你可以在对话里让它运行
 `dsh --profile web --dump-config`，确认输出里有 `superpowers-dsh` 行。
 
-### 从 npm 安装（推荐，一条命令）
+### 从 npm 安装（上游发行包）
 
-包已发布到 npm，名为 `superpowers-dsh`（国内会自动同步到 npmmirror 镜像）：
+npm 上的 `superpowers-dsh@0.2.0` 是上游父仓库发布的 v6.4.2 版本；它不包含本 fork 的改动：
 
 ```sh
-dsh plugin --profile web add superpowers-dsh
+dsh plugin --profile web add superpowers-dsh@0.2.0
 ```
 
-> 必须用 `dsh plugin` 形式——直接 `npm install superpowers-dsh` 只会把包当
-> 普通库装到当前目录，**不会**注册进任何 DeepSeek Harness profile，技能
-> 永远不会被加载。
+要安装本仓库 v0.2.1 / 上游技能 v7.0.0，请使用上面的 GitHub 安装命令。本 fork 尚未发布独立 npm 包。
 
 ### 从 GitHub 安装
 
 ```sh
 # 任意目录下执行
-dsh plugin --profile web add https://github.com/LayneChai/superpowers-dsh.git
+dsh plugin --profile web add https://github.com/StartOver000/SuperPower-dsh.git
 ```
 
 ### 从 tarball 或本地文件夹安装
 
 ```sh
-# tarball（例如 Release 里的 superpowers-dsh-0.1.0.tgz）
-dsh plugin --profile web add C:\路径\to\superpowers-dsh-0.1.0.tgz
+# tarball（例如本地执行 npm pack 生成的文件）
+dsh plugin --profile web add C:\路径\to\superpowers-dsh-VERSION.tgz
 
 # 或解压后的插件文件夹（pnpm 以链接方式安装，改完重启即生效）
 dsh plugin --profile web add C:\路径\to\superpowers-dsh
@@ -100,7 +98,7 @@ dsh --profile web --dump-config     # 必须出现 `superpowers-dsh` 行
 把 `--profile` 指向你实际运行的 profile：
 
 ```sh
-dsh plugin --profile headless add superpowers-dsh
+dsh plugin --profile headless add https://github.com/StartOver000/SuperPower-dsh.git
 dsh --profile headless --dump-config
 ```
 
@@ -113,49 +111,43 @@ dsh plugin --profile web remove superpowers-dsh
 
 ### 注意事项
 
-- 国内用户可以先把 npm 镜像设为 npmmirror，让 `dsh plugin add
-  superpowers-dsh` 更快：`npm config set registry https://registry.npmmirror.com`
+- 如需安装上文所述上游 npm 包 `superpowers-dsh@0.2.0`，国内用户可先设
+  npmmirror：`npm config set registry https://registry.npmmirror.com`；安装命令使用
+  `dsh plugin add superpowers-dsh@0.2.0`。
 - 从文件夹或 `file:` 规格安装的插件是链接安装（不是复制）：修改该文件夹后，
   下次重启 profile 生效
 - 使用者**不需要 npm 账号，也不需要 2FA**——安装只是普通的包下载
 
 ## DSH 版本兼容性
 
-**结论：与 npm 上已发布的全部 DSH 版本兼容；已在 DSH `0.2.0-rc.2`（当前 `latest`）上端到端实跑验证。无已知不兼容问题。**
-
-核对日期 2026-10-03，npm 发布通道：`latest` = `next` = `0.2.0-rc.2`，`alpha` = `0.2.1-alpha.1`。
+**最新实测（2026-10-14）：使用本机 DeepSeek Harness `app.asar` 中的 `@deepseek-ai/dsh-skill 0.2.0-rc.2` 与真实 `SkillRegistry` 校验；15 个技能均能列出并读回，插件 rank 550 低于内置 rank 600。app.asar 未包含 manifest 声明路径下的 `.d.ts`，因此静态类型契约检查被明确跳过。**
 
 ### 支持矩阵
 
 | 检查项 | 结果 |
 | --- | --- |
-| 插件依赖的 DSH 接口 | ① `ctx.skills.registerProvider(...)`（技能提供者注册）② `dsh.bundle.patch`（bundle 挂载自己的 `cordis.patch.yml`） |
-| 已发布版本数 | 承载接口的两个包 `@deepseek-ai/dsh-skill` 与 `@deepseek-ai/dsh-app-boot` 各 **31 个已发布版本** |
-| 逐版本核对结果 | **31 / 31 全部一致**，从最早的 `0.0.1-rc.1` 到最新的 `0.2.1-alpha.1`，接口签名与语义均未变 |
-| 端到端实跑 | 把 `lib/index.js` 挂进本机 DSH `0.2.0-rc.2` 的**真实 `SkillRegistry`**：`list()` 返回 15 个技能，逐个 `get()` 都能取到正文与 `resourceBase` |
-| 插件自身版本 | `0.2.0`（技能内容同步自 obra/superpowers `v6.4.2`） |
-| 运行时依赖 | 无。只用 Node 内置模块，不引入任何第三方依赖，因此不受 DSH 依赖树变化影响 |
-| Node.js | 本机验证 `v22.22.2`；DSH 自身未声明 `engines`，本插件也未限制 |
+| 插件依赖的 DSH 接口 | `ctx.skills.registerProvider(...)`（技能提供者注册）与 `dsh.bundle.patch`（bundle 挂载自己的 `cordis.patch.yml`） |
+| 当前运行时验证 | `@deepseek-ai/dsh-skill 0.2.0-rc.2` 的真实 `SkillRegistry` 列出 15 个技能，逐个 `get()` 均返回正文与目录资源基路径 |
+| 静态类型契约 | app.asar 中未包含 `lib/types/index.d.ts`；兼容检查器会标记为跳过，不能据此声称静态类型接口已验证 |
+| 插件自身版本 | `0.2.1`（本地 fork，未单独发布；技能内容同步自 obra/superpowers `v7.0.0`） |
+| 运行时依赖 | 无。只用 Node 内置模块，不引入任何第三方依赖 |
+| Node.js | 本次实测使用 DSH 随附 Node `v24.21.0`；DSH 自身未声明 `engines`，本插件也未限制 |
 
 ### 已知兼容性说明
 
-- **无已知不兼容问题。** 上游 DSH 从 `0.1.7-rc.2` 起加入插件兼容性闸门
-  `evaluatePluginCompatibility`：它**只检查插件自己声明的 `@deepseek-ai/dsh*`
-  peerDependencies**，范围不满足就把整个 bundle 跳过并报错。本插件不声明任何
-  peerDependencies，因此这道闸门**不会拦截它**（同时它也意味着 DSH 不会替你校验版本，
-  所以升级 DSH 后建议跑一次下面的复核命令）。
+- **本次 v7 同步未改动 DSH provider 代码**；本机从 app.asar 提取出的实际 SDK 运行时检查通过。由于打包内容缺少类型声明，静态契约部分没有验证。
+- 上游 DSH 从 `0.1.7-rc.2` 起加入插件兼容性闸门 `evaluatePluginCompatibility`：它**只检查插件自己声明的 `@deepseek-ai/dsh*` peerDependencies**，范围不满足就把整个 bundle 跳过并报错。本插件不声明这些 peerDependencies，因此闸门不会校验它的版本；升级 DSH 后应运行下面的复核命令。
 - **同名技能的优先级是有意选择**：插件以 `PACKAGED_SKILL_RANK = 550` 注册，DSH 内置
   bundled 根为 `BUNDLED_SKILL_RANK = 600`（数值越小越优先），所以**同名时你自己的技能
   会覆盖本插件的同名技能**。DSH 内置技能里没有与本插件重名的技能。
 - **Windows 提示**：技能正文里的 bash 辅助脚本需要 Git for Windows（Git Bash）；Node
-  脚本（`server.cjs`、`render-graphs.js`）全平台可用。技能正文已按"经解释器调用"
+  脚本（`server.cjs`、`render-graphs.js`）全平台可用。技能正文已按“经解释器调用”
   （`bash scripts/...`）编写，不依赖 Unix 可执行位。
-- 安装方式不影响兼容性：npm 包、GitHub 源、本地目录链接三种安装方式加载的是同一份
-  bundle 声明。
+- 安装本 fork 时，GitHub 源与本地目录链接都加载该 fork 的 bundle；npm 上的同名包属于父仓库，见上文。
 
 ### 兼容性怎么复核
 
-一条命令，对着**你本机安装的** DSH 复跑上面全部检查（包括真实注册表挂载）：
+默认优先使用 `$DSH_PROFILE_DIR/node_modules`（当前活动 profile 提供该变量时）；否则使用 `$DSH_HOME/profiles/node_modules`（未设置 `DSH_HOME` 时为 `~/.dsh/profiles/node_modules`）。若 profile 在其他位置，请传入实际的 `node_modules` 路径或设置 `$DSH_NODE_MODULES`：
 
 ```sh
 node scripts/check-dsh-compat.mjs
@@ -163,23 +155,25 @@ node scripts/check-dsh-compat.mjs
 node scripts/check-dsh-compat.mjs D:\path\to\profile\node_modules
 ```
 
-本机实测输出：
+当前运行时测试输出（SDK 安装路径已缩略）：
 
 ```
 dsh SDK      : @deepseek-ai/dsh-skill 0.2.0-rc.2
 mounted      : 15 skills listed and read through the real SkillRegistry
 rank         : PACKAGED_SKILL_RANK=550 is below BUNDLED_SKILL_RANK=600
+note         : SDK type declarations are not present at .../lib/types/index.d.ts; static contract skipped
 
-check-dsh-compat: OK — this plugin matches the installed DSH SDK
+check-dsh-compat: OK — runtime contracts match; static contract was not available
 ```
 
-它依次检查：SDK 是否存在及版本 → 已安装 SDK 的类型声明里是否仍声明本插件实现的接口
+它检查 SDK 是否存在及版本；如果 SDK 带有类型声明，则校验本插件实现的接口
 （`registerProvider`、`SkillProvider.list/get`、`SkillCandidate`、`SkillResourceBase`、
-`'custom'` 来源桶）→ 把 `lib/index.js` 真的挂进 `SkillRegistry` 并逐个读回 →
-比较 rank 关系。任一项不成立就 `exit 1`，并指出具体是哪条契约变了。
+`'custom'` 来源桶）；随后把 `lib/index.js` 挂进真实 `SkillRegistry` 并逐个读回技能，
+再从 SDK runtime 导出的 `BUNDLED_SKILL_RANK` 比较 rank。缺少 `.d.ts` 时只跳过静态部分，
+会在输出中明确标注；运行时挂载或 rank 检查失败仍会 `exit 1`。
 
 > 结论以**验证时的 DSH 版本**为准。如果你跑的是更新的 DSH，先跑一遍上面的命令；
-> 上游一旦改动技能接口，它会立刻报出具体变化，而不是等到技能悄悄消失。
+> 上游一旦改动技能接口，它会报告可验证的具体变化，而不是等到技能悄悄消失。
 
 ## 技能列表
 
@@ -215,7 +209,7 @@ check-dsh-compat: OK — this plugin matches the installed DSH SDK
 - **零运行时依赖** —— 插件只使用 Node 内置模块，消费注入的 `ctx.skills`
   服务接口。
 
-## 上游同步（当前：obra/superpowers v6.4.2）
+## 上游同步（当前：obra/superpowers v7.0.0）
 
 `skills/` 是**生成产物**，不要手改。同步逻辑写在两个地方，改它们再重跑即可：
 
@@ -226,13 +220,13 @@ check-dsh-compat: OK — this plugin matches the installed DSH SDK
   覆盖到同步结果上。
 
 ```sh
-# 1. 取上游对应版本的源码（git 协议在部分网络不可用，走 codeload）
-mkdir -p .upstream/superpowers
-curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v6.4.2 \
-  | tar -xz -C .upstream/superpowers --strip-components=1
+# 1. 取上游对应版本的源码；每个 tag 使用独立目录，避免旧文件残留
+mkdir -p .upstream/superpowers-v7.0.0
+curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v7.0.0 \
+  | tar -xz -C .upstream/superpowers-v7.0.0 --strip-components=1
 
-# 2. 重放同步
-node scripts/sync-from-upstream.mjs .upstream/superpowers
+# 2. 重放同步；package.json 的 dsh.superpowersUpstream 必须与源码版本一致
+node scripts/sync-from-upstream.mjs .upstream/superpowers-v7.0.0
 
 # 3. 校验（provider 能列出全部技能、frontmatter 合法、没有悬空引用）
 node scripts/verify-skills.mjs
@@ -241,35 +235,13 @@ node scripts/verify-skills.mjs
 node scripts/check-dsh-compat.mjs
 ```
 
-本次同步带来的上游变更：
+同步脚本会在版本记录不匹配、技能集合、跨 harness 参考文件或适配锚点变化时停止，且不会替换当前 `skills/`。提交前旧目录会暂存为恢复目录；新目录换入失败会尝试还原，若发现遗留恢复目录则停止并要求先人工检查。GitHub Actions 会在 Linux 与 Windows 上重跑固定 v7.0.0 同步、技能校验，并检测生成目录漂移。
 
-- **新增技能 `diagnosing-superpowers`**（v6.4.1）：会话跑歪之后，定位并读取
-  磁盘上的 transcript，逐条给出 `path:line` 证据复盘；按需生成脱敏 bundle 或
-  GitHub issue 草稿。DSH 侧的 transcript 位置与解压方式已写进
-  `skills/diagnosing-superpowers/references/session-discovery.md` 和
-  `skills/using-superpowers/references/dsh-tools.md`。
-- **`executing-plans` 重写为 Native（内联）执行**（v6.4.1）：不再每三个任务
-  停一次让你确认；整个计划自己执行完，末尾只做**一次**整分支评审。共享
-  SDD 的 workspace 与 ledger，新增 `scripts/task-start` / `scripts/task-done`
-  两个辅助脚本。
-- **`writing-plans`**（v6.4.1 + v6.4.2）：计划存盘后必须先给你看过再执行；
-  新增 `Review Focus` 段（规格暗示但任务测试没覆盖的 5 类输入/失效模式）；
-  `No Placeholders` 换成 `What a Step Contains`（测试步给断言、代码步给签名
-  与文件、验证步给命令与通过输出），自审增加“篇幅比例”检查；删除
-  `plan-document-reviewer-prompt.md`。
-- **`brainstorming`**（v6.4.1）：先弄清“你为什么想要这个”，把你的意图复述
-  回去待纠正，并把审批绑定到实际的设计/计划阶段。
-- **代码评审**（v6.4.1）：规格没写的输入按“合理使用者会预期什么”判定，新增
-  “Declined to judge”清单由执行方逐条裁定；`BASE_SHA` 备用写法改为
-  `git merge-base origin/main HEAD`。
-- **`test-driven-development`**（v6.4.1）：绿的标准是**项目整套测试**，不只是
-  你写的那一个文件；跑项目测试命令并按名字上报每一个失败。
-- **`subagent-driven-development`**（v6.4.1）：workspace 记录归属计划，同名
-  计划不再互相覆盖；`review-package` 拒绝空区间或非后代区间（exit 3）。
-- **可执行位修复**（v6.4.1）：技能正文里的脚本改为经解释器调用
-  （`bash scripts/foo.sh`、`node render-graphs.js`），本 port 把
-  `task-start` / `task-done` 内部的脚本互相调用也一并补齐（Windows 没有
-  Unix 可执行位）。
+本次同步（v7.0.0）带来的上游变化：
+
+- `brainstorming` 技能经过大幅改写，项目设计流程新增独立的 builder review 阶段，并随技能分发 `builder-check-prompt.md`。
+- 上游已在 `brainstorming/SKILL.md` 中直接改用相对路径 `visual-companion.md`，因此 DSH 不再需要对此做文本转换；DSH 的 Windows 说明仍由同步转换补入。
+- 技能目录仍为 15 个技能；同步脚本会在上游技能集合、跨 harness 参考文件或适配锚点变化时停止，要求先审查再同步。
 
 ## 移植说明（对比上游 obra/superpowers）
 

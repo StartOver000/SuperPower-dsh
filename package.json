@@ -1,9 +1,17 @@
 {
   "name": "superpowers-dsh",
   "description": "Superpowers for the DeepSeek Harness: TDD, debugging, planning, and collaboration skills adapted from obra/superpowers",
-  "version": "0.2.0",
-  "private": false,
+  "version": "0.2.1",
+  "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/StartOver000/SuperPower-dsh.git"
+  },
+  "homepage": "https://github.com/StartOver000/SuperPower-dsh#readme",
+  "bugs": {
+    "url": "https://github.com/StartOver000/SuperPower-dsh/issues"
+  },
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
@@ -22,7 +30,9 @@
   "scripts": {
     "verify": "node scripts/verify-skills.mjs",
     "compat": "node scripts/check-dsh-compat.mjs",
-    "sync": "node scripts/sync-from-upstream.mjs"
+    "sync": "node scripts/sync-from-upstream.mjs",
+    "test": "npm run verify && node --test scripts/check-dsh-compat.test.mjs",
+    "prepublishOnly": "npm test"
   },
   "license": "MIT",
   "keywords": [
@@ -36,6 +46,6 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     },
-    "superpowersUpstream": "v6.4.2"
+    "superpowersUpstream": "v7.0.0"
   }
 }

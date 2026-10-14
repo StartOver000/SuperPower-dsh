@@ -135,6 +135,11 @@ for (const file of files) {
       if (ILLUSTRATIVE.has(target)) continue
       if (!(await resolveRef(file, target))) fail(`${rel}:${index + 1}: referenced path does not ship: ${target}`)
     }
+
+    for (const match of line.matchAll(/`([A-Za-z0-9._-]+\.md)`\s+in this directory\b/gi)) {
+      const target = match[1]
+      if (!(await resolveRef(file, target))) fail(`${rel}:${index + 1}: referenced file does not ship: ${target}`)
+    }
   }
 }
 

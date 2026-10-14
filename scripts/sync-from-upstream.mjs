@@ -17,11 +17,12 @@
  *
  * Usage:
  *   node scripts/sync-from-upstream.mjs <path-to-superpowers-checkout>
- *   node scripts/sync-from-upstream.mjs .upstream/superpowers
+ *   node scripts/sync-from-upstream.mjs .upstream/superpowers-v7.0.0
  *
- * Get a checkout with:
- *   curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v6.4.2 \
- *     | tar -xz -C .upstream --transform 's,^[^/]*,superpowers,'
+ * Get a clean, tag-specific checkout with:
+ *   mkdir -p .upstream/superpowers-v7.0.0
+ *   curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v7.0.0 \
+ *     | tar -xz -C .upstream/superpowers-v7.0.0 --strip-components=1
  *
  * A missing anchor fails the run loudly: upstream rewrote text this port
  * depends on, so a human must decide what the DSH wording becomes.
@@ -37,6 +38,7 @@ const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const destSkills = join(pkgRoot, 'skills')
 /** Staging tree: the destination is only replaced once every assertion passed. */
 const stagingSkills = join(pkgRoot, '.skills-sync-tmp')
+const backupSkills = join(pkgRoot, '.skills-sync-backup')
 const overridesRoot = join(pkgRoot, 'port', 'overrides')
 
 const UPSTREAM_SKILLS = [
@@ -111,12 +113,6 @@ const TRANSFORMS = [
       '  `subagent-driven-development`, `dispatching-parallel-agents`, and the rest.',
       '- `using-superpowers` itself is discoverable the same way.'
     ].join('\n')
-  },
-  {
-    name: 'brainstorming: reference the companion by bare relative name',
-    file: 'brainstorming/SKILL.md',
-    find: '`skills/brainstorming/visual-companion.md`',
-    replace: '`visual-companion.md`'
   },
   {
     name: 'brainstorming: DSH platform note for the visual companion',
@@ -324,7 +320,6 @@ if (upstreamSkillDirs.join('\n') !== [...UPSTREAM_SKILLS].sort().join('\n')) {
   )
 }
 
-// Report the upstream version so the port can record it.
 let upstreamVersion = 'unknown'
 try {
   const manifest = JSON.parse(await readFile(join(upstreamRoot, '.claude-plugin', 'plugin.json'), 'utf8'))
@@ -333,10 +328,32 @@ try {
   /* version is informational only */
 }
 
+const pkg = JSON.parse(await readFile(join(pkgRoot, 'package.json'), 'utf8'))
+if (upstreamVersion === 'unknown' || pkg.dsh?.superpowersUpstream !== `v${upstreamVersion}`) {
+  fail(
+    `package.json records dsh.superpowersUpstream="${pkg.dsh?.superpowersUpstream}" but the checkout is "v${upstreamVersion}".\n` +
+      '       Update package.json after reviewing the upstream diff, then rerun the sync.'
+  )
+}
+
 await rm(stagingSkills, { recursive: true, force: true })
 await mkdir(stagingSkills, { recursive: true })
 
 const upstreamFiles = await walk(upstreamSkills)
+const upstreamToolReferences = upstreamFiles
+  .filter((rel) => rel.startsWith('using-superpowers/references/') && /-tools\.md$/.test(rel))
+  .sort()
+if (upstreamToolReferences.join('\n') !== [...SKIP].sort().join('\n')) {
+  const added = upstreamToolReferences.filter((rel) => !SKIP.includes(rel))
+  const missing = SKIP.filter((rel) => !upstreamToolReferences.includes(rel))
+  fail(
+    'the upstream harness reference set changed — decide before syncing:\n' +
+      (added.length > 0 ? `  added references:   ${added.join(', ')}\n` : '') +
+      (missing.length > 0 ? `  removed references: ${missing.join(', ')}\n` : '') +
+      '  Update SKIP and the porting notes in both READMEs.'
+  )
+}
+
 const applied = new Set()
 let copied = 0
 let stripped = 0
@@ -353,7 +370,7 @@ for (const rel of upstreamFiles) {
     continue
   }
 
-  let text = await readFile(source, 'utf8')
+  let text = (await readFile(source, 'utf8')).replace(/\r\n/g, '\n')
   text = applyTransforms(rel, text, applied)
 
   const namespaced = text.split('superpowers:').length - 1
@@ -368,9 +385,15 @@ for (const rel of upstreamFiles) {
 
 // DSH-only files replace upstream text wholesale.
 for (const rel of await walk(overridesRoot)) {
+  const source = join(overridesRoot, rel)
   const target = join(stagingSkills, rel)
   await mkdir(dirname(target), { recursive: true })
-  await cp(join(overridesRoot, rel), target)
+  if (isTextFile(rel)) {
+    const text = (await readFile(source, 'utf8')).replace(/\r\n/g, '\n')
+    await writeFile(target, text, 'utf8')
+  } else {
+    await cp(source, target)
+  }
   copied++
 }
 
@@ -381,18 +404,41 @@ if (unfired.length > 0) {
   fail(`transform(s) never matched a copied file: ${unfired.map((t) => `${t.name} (${t.file})`).join('; ')}`)
 }
 
-// Everything applied: swap the staging tree in.
-await rm(destSkills, { recursive: true, force: true })
-await rename(stagingSkills, destSkills)
+// Replace the generated tree only after every copy and transform succeeded.
+// Keep the previous tree until the staged directory is in place so a failed
+// rename can restore the last known-good skills.
+const existingBackup = await stat(backupSkills).catch(() => null)
+if (existingBackup) {
+  fail(`recovery directory already exists at ${backupSkills}; restore or inspect it before syncing again`)
+}
 
-// Guard the recorded upstream version.
-const pkg = JSON.parse(await readFile(join(pkgRoot, 'package.json'), 'utf8'))
-const recorded = pkg.dsh?.superpowersUpstream
-if (recorded !== `v${upstreamVersion}`) {
-  console.warn(
-    `[warn] package.json records dsh.superpowersUpstream="${recorded}" but the checkout is "v${upstreamVersion}".\n` +
-      '       Update package.json and the READMEs after reviewing the diff.'
-  )
+const existingSkills = await stat(destSkills).catch(() => null)
+let movedPreviousSkills = false
+try {
+  if (existingSkills) {
+    await rename(destSkills, backupSkills)
+    movedPreviousSkills = true
+  }
+  await rename(stagingSkills, destSkills)
+} catch (error) {
+  if (movedPreviousSkills) {
+    try {
+      await rename(backupSkills, destSkills)
+      movedPreviousSkills = false
+    } catch (rollbackError) {
+      fail(
+        `could not install staged skills (${error.message}); rollback also failed (${rollbackError.message}).\n` +
+          `       The previous skills are preserved at ${backupSkills}.`
+      )
+    }
+  }
+  fail(`could not install staged skills (${error.message}); the previous skills were left unchanged or restored`)
+}
+
+if (movedPreviousSkills) {
+  await rm(backupSkills, { recursive: true, force: true }).catch((error) => {
+    console.warn(`[warn] synced skills, but could not remove recovery directory ${backupSkills}: ${error.message}`)
+  })
 }
 
 console.log(`synced ${copied} files from obra/superpowers v${upstreamVersion} into skills/`)

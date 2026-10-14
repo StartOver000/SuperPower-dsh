@@ -1,0 +1,37 @@
+name: Verify skills
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sync-and-verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out this fork
+        uses: actions/checkout@v4
+      - name: Check out pinned upstream
+        uses: actions/checkout@v4
+        with:
+          repository: obra/superpowers
+          ref: v7.0.0
+          path: .upstream/superpowers
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rebuild generated skills
+        run: node scripts/sync-from-upstream.mjs .upstream/superpowers
+      - name: Verify skill package
+        run: npm test
+      - name: Check generated tree is committed
+        shell: bash
+        run: |
+          if [[ -n "$(git status --porcelain --untracked-files=all -- skills)" ]]; then
+            git status --short --untracked-files=all -- skills
+            exit 1
+          fi

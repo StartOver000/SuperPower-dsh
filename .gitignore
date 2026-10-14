@@ -7,3 +7,5 @@ Thumbs.db
 .upstream/
 # Staging tree the sync script builds before swapping it into skills/
 .skills-sync-tmp/
+# Recovery copy retained if replacing the generated tree cannot be completed
+.skills-sync-backup/

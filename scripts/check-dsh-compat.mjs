@@ -4,21 +4,21 @@
  *
  *   node scripts/check-dsh-compat.mjs [node_modules-dir]
  *
- * `node_modules-dir` defaults to `$DSH_HOME/profiles/node_modules` (where a
- * running harness installs its profile bundles). Pass the installation's own
+ * `node_modules-dir` defaults to `$DSH_PROFILE_DIR/node_modules` when the active
+ * profile sets `DSH_PROFILE_DIR`; otherwise it is `$DSH_HOME/profiles/node_modules`
+ * (where a running harness installs its profile bundles). Pass the installation's own
  * directory to check the in-box copy instead.
  *
  * What it checks, all against the SDK that is actually installed:
  *   1. `@deepseek-ai/dsh-skill` is present, and which version it is.
- *   2. Static contract: the installed SDK's own type declarations still
- *      declare the provider interface this plugin implements
- *      (`registerProvider`, `SkillProvider.list/get`, `SkillCandidate`,
- *      `SkillResourceBase`, the `'custom'` source bucket).
+ *   2. Static contract when the installed SDK ships declarations: they must
+ *      declare the provider interface this plugin implements. If declarations
+ *      are omitted, report the static check as skipped and continue.
  *   3. Dynamic contract: mount `lib/index.js` into the real `SkillRegistry`
  *      and read every skill back through it (`list()` + `get(name)`).
  *   4. Rank: compare this plugin's `PACKAGED_SKILL_RANK` with the SDK's
- *      `BUNDLED_SKILL_RANK`, since that pair decides duplicate-name
- *      resolution.
+ *      runtime-exported `BUNDLED_SKILL_RANK`, since that pair decides
+ *      duplicate-name resolution.
  *
  * Exits non-zero when any check fails, so a DSH upgrade can be re-verified
  * with one command.
@@ -33,8 +33,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 const dshHome = process.env.DSH_HOME || join(process.env.USERPROFILE ?? process.env.HOME ?? '', '.dsh')
+const defaultModulesDir = process.env.DSH_PROFILE_DIR
+  ? join(process.env.DSH_PROFILE_DIR, 'node_modules')
+  : join(dshHome, 'profiles', 'node_modules')
 const modulesDir = resolve(
-  process.argv[2] ?? process.env.DSH_NODE_MODULES ?? join(dshHome, 'profiles', 'node_modules')
+  process.argv[2] ?? process.env.DSH_NODE_MODULES ?? defaultModulesDir
 )
 
 const problems = []
@@ -76,7 +79,7 @@ if (skill && cordis) {
   // ---- 2. static contract against the installed declarations -----------------
   const typesPath = join(skill.dir, typeof skill.manifest.types === 'string' ? skill.manifest.types : 'lib/types/index.d.ts')
   if (!existsSync(typesPath)) {
-    fail(`the SDK ships no type declarations at ${typesPath}; the static contract check cannot run`)
+    note(`SDK type declarations are not present at ${typesPath}; static contract skipped`)
   } else {
     const types = await readFile(typesPath, 'utf8')
     const expectations = [
@@ -91,15 +94,14 @@ if (skill && cordis) {
     for (const [label, pattern] of expectations) {
       if (!pattern.test(types)) fail(`installed SDK no longer declares: ${label}`)
     }
-    const rank = /BUNDLED_SKILL_RANK\s*=\s*(\d+)/.exec(types)
-    if (rank) bundledRank = Number(rank[1])
-    else fail('installed SDK no longer exports BUNDLED_SKILL_RANK')
   }
 
   // ---- 3. dynamic contract: mount into the real registry ---------------------
   try {
     const { Context } = await import(cordis.url)
     const sdk = await import(skill.url)
+    if (typeof sdk.BUNDLED_SKILL_RANK === 'number') bundledRank = sdk.BUNDLED_SKILL_RANK
+    else fail('installed SDK no longer exports BUNDLED_SKILL_RANK at runtime')
     const ctx = new Context()
     new sdk.SkillRegistry(ctx) // registers itself as ctx.skills
 
@@ -124,7 +126,9 @@ if (skill && cordis) {
   // ---- 4. rank ---------------------------------------------------------------
   const source = await readFile(join(pkgRoot, 'lib', 'index.js'), 'utf8')
   const ours = /PACKAGED_SKILL_RANK\s*=\s*(\d+)/.exec(source)
-  if (ours && bundledRank !== undefined) {
+  if (!ours) {
+    fail('could not find PACKAGED_SKILL_RANK in lib/index.js')
+  } else if (bundledRank !== undefined) {
     const value = Number(ours[1])
     const relation = value < bundledRank ? 'below' : value > bundledRank ? 'above' : 'equal to'
     console.log(`rank         : PACKAGED_SKILL_RANK=${value} is ${relation} BUNDLED_SKILL_RANK=${bundledRank}`)
@@ -141,4 +145,9 @@ if (problems.length > 0) {
   for (const problem of problems) console.error(`  - ${problem}`)
   process.exit(1)
 }
-console.log('\ncheck-dsh-compat: OK — this plugin matches the installed DSH SDK')
+const staticSkipped = notes.some((line) => line.includes('static contract skipped'))
+if (staticSkipped) {
+  console.log('\ncheck-dsh-compat: OK — runtime contracts match; static contract was not available')
+} else {
+  console.log('\ncheck-dsh-compat: OK — this plugin matches the installed DSH SDK')
+}
