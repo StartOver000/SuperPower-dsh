@@ -97,12 +97,13 @@ if (skill && cordis) {
   }
 
   // ---- 3. dynamic contract: mount into the real registry ---------------------
+  let ctx
   try {
     const { Context } = await import(cordis.url)
     const sdk = await import(skill.url)
     if (typeof sdk.BUNDLED_SKILL_RANK === 'number') bundledRank = sdk.BUNDLED_SKILL_RANK
     else fail('installed SDK no longer exports BUNDLED_SKILL_RANK at runtime')
-    const ctx = new Context()
+    ctx = new Context()
     new sdk.SkillRegistry(ctx) // registers itself as ctx.skills
 
     const plugin = await import(pathToFileURL(join(pkgRoot, 'lib', 'index.js')).href)
@@ -134,6 +135,59 @@ if (skill && cordis) {
     console.log(`rank         : PACKAGED_SKILL_RANK=${value} is ${relation} BUNDLED_SKILL_RANK=${bundledRank}`)
     if (value >= bundledRank) {
       note('this plugin now ranks at or above bundled roots; a same-name built-in skill would be shadowed')
+    }
+  }
+
+  // ---- 5. session bootstrap --------------------------------------------------
+  // The skill files are inert without the bootstrap: nothing invokes them until
+  // the using-superpowers body reaches the model. Verify the wiring statically
+  // and then drive a real agent/created through the mounted plugin.
+  if (!/ctx\.on\(\s*['"]agent\/created['"]/.test(source)) {
+    fail("lib/index.js does not listen for 'agent/created'; sessions would start without the bootstrap")
+  } else if (!/agent\.inject\(/.test(source)) {
+    fail('the agent/created listener does not call agent.inject(); the bootstrap never reaches the model')
+  } else if (typeof ctx?.serial !== 'function') {
+    note('the installed cordis Context exposes no serial(); bootstrap injection was not driven')
+  } else {
+    const skillText = await readFile(join(pkgRoot, 'skills', 'using-superpowers', 'SKILL.md'), 'utf8')
+    const injected = []
+    const agentFor = (header) => ({
+      session: { header },
+      inject(message) {
+        injected.push(message)
+      }
+    })
+    const header = { version: 1, id: 'compat', createdAt: 0, isSeeded: false }
+    await ctx.serial('agent/created', { agent: agentFor(header), source: { kind: 'fresh' } })
+    await ctx.serial('agent/created', {
+      agent: agentFor({ ...header, id: 'compat-child', origin: 'subagent', delegationDepth: 1 }),
+      source: { kind: 'fresh' }
+    })
+    if (injected.length !== 1) {
+      fail(
+        `driving agent/created injected ${injected.length} bootstrap message(s), expected 1 ` +
+          '(the bootstrap must fire once per real session and never in a subagent session)'
+      )
+    } else {
+      const message = injected[0]
+      const text = message.content.map((block) => block.text).join('')
+      if (message.role !== 'user') fail(`the bootstrap message has role ${message.role}, expected user`)
+      if (typeof message.id !== 'string' || message.id === '') fail('the bootstrap message has no id')
+      if (!Object.isFrozen(message)) fail('the bootstrap message is not frozen; the SDK freezes every message')
+      if (!text.startsWith('<EXTREMELY_IMPORTANT>')) {
+        fail('the bootstrap message does not open with <EXTREMELY_IMPORTANT>')
+      }
+      if (!text.includes(skillText)) {
+        fail('the bootstrap message does not carry the using-superpowers SKILL.md text')
+      }
+      if (!text.includes("use the 'skill' tool")) {
+        fail('the bootstrap message does not name the harness skill tool')
+      }
+      if (problems.length === 0) {
+        console.log(
+          `bootstrap    : agent/created injects ${text.length} chars of using-superpowers; subagent sessions skipped`
+        )
+      }
     }
   }
 }

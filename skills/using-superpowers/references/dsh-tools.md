@@ -20,6 +20,10 @@ in `AGENTS.md` (or the session's system prompt), and load skills explicitly.
 `~/.dsh/AGENTS.md` is the user-level file; `<project>/AGENTS.md` is the
 project-level one.
 
+This plugin also injects the full `using-superpowers` skill body into every new
+session, so the rule above is already in context before the first user message.
+That injection is the plugin's bootstrap, not a skill you invoke.
+
 ## Core tool mapping (Claude Code → DSH)
 
 | Claude Code | DSH equivalent | Notes |
@@ -32,7 +36,7 @@ project-level one.
 | `AskUserQuestion` | `ask_user_question` | Questions return stable ids echoed in answers. |
 | `WebSearch` / `WebFetch` | `web_search` / `web_fetch` | Search returns a summary plus source URLs. |
 | `LS` (file list) | `glob` + `read` | There is no dedicated `ls` tool. |
-| Hooks (PreToolUse etc.) | None | DSH has no hook system. Enforce workflows through skills themselves. |
+| Hooks (PreToolUse etc.) | Plugin event listeners | There are no hook *files*, but DSH plugins subscribe to the harness's own events (`tools/pre-execute`, `tools/post-execute`, `agent/created`, `agent/pre-step`, `system-prompt/assemble`) and can deny a call with `ctx.tools.guard()` or remove tools with `ctx.tools.restrict()`. Official bridges exist for Claude-Code-style hook files and for Codex. Skills must still never assume such a plugin is installed — enforce workflows through the skills themselves. |
 | `/commands` slash commands | `dsh` CLI + `command-*` plugins | Slash-command UI lives in the web surface. |
 | Plan mode | `exit_plan_mode` | Present the plan; on approval leave plan mode and execute. |
 | `ReadImage` | `read_image` | PNG/JPEG/WebP/GIF only. |

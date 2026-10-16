@@ -8,8 +8,10 @@
  *   1. `lib/index.js` registers a provider that `list()`s every
  *      `<name>/SKILL.md` and `get()`s a full definition for each candidate.
  *   2. Frontmatter parses, `name` matches its directory, `description` is set.
- *   3. No upstream `superpowers:` namespace prefix survived the port.
- *   4. Every relative markdown link and every referenced `scripts/...` or
+ *   3. `agent/created` injects the using-superpowers bootstrap exactly once per
+ *      real session, never in a subagent session.
+ *   4. No upstream `superpowers:` namespace prefix survived the port.
+ *   5. Every relative markdown link and every referenced `scripts/...` or
  *      `references/...` path points at a file that ships in this package.
  *
  * Exits non-zero listing every offender.
@@ -32,15 +34,48 @@ const fail = (message) => problems.push(message)
 // ---- 1 & 2: drive the real provider -----------------------------------------
 const mod = await import(new URL('../lib/index.js', import.meta.url))
 let provider
+const listeners = {}
 const ctx = {
   skills: {
     registerProvider(factory) {
       provider = factory({})
     }
+  },
+  on(name, listener) {
+    ;(listeners[name] ??= []).push(listener)
   }
 }
 mod.apply(ctx)
 if (!provider) throw new Error('apply() did not register a provider')
+
+// The skills are inert unless the bootstrap reaches the model, so drive
+// `agent/created` the way the harness dispatches it and inspect the injection.
+const injected = []
+const agentFor = (header) => ({
+  session: { header },
+  inject(message) {
+    injected.push(message)
+  }
+})
+const bootstrapListeners = listeners['agent/created'] ?? []
+for (const listener of bootstrapListeners) {
+  await listener({ agent: agentFor({ id: 'verify' }), source: { kind: 'fresh' } })
+  await listener({
+    agent: agentFor({ id: 'verify-child', origin: 'subagent', delegationDepth: 1 }),
+    source: { kind: 'fresh' }
+  })
+}
+if (bootstrapListeners.length === 0) {
+  fail("lib/index.js registers no 'agent/created' listener; sessions would start without the bootstrap")
+} else if (injected.length !== 1) {
+  fail(`agent/created injected ${injected.length} bootstrap message(s), expected 1 (subagents must be skipped)`)
+} else {
+  const text = injected[0].content.map((block) => block.text).join('')
+  const skillText = await readFile(join(skillsRoot, 'using-superpowers', 'SKILL.md'), 'utf8')
+  if (injected[0].role !== 'user') fail(`the bootstrap message has role ${injected[0].role}, expected user`)
+  if (!text.includes(skillText)) fail('the injected bootstrap does not carry skills/using-superpowers/SKILL.md')
+  if (!text.includes("use the 'skill' tool")) fail("the injected bootstrap does not name DSH's skill tool")
+}
 
 const candidates = await provider.list({})
 if (candidates.length === 0) fail('provider.list() returned no skills')
@@ -63,7 +98,7 @@ for (const candidate of candidates) {
   }
 }
 
-// ---- 3 & 4: lint the files on disk -------------------------------------------
+// ---- 4 & 5: lint the files on disk -------------------------------------------
 async function walk(current) {
   const out = []
   for (const entry of await readdir(current, { withFileTypes: true })) {
@@ -150,7 +185,10 @@ if (problems.length > 0) {
   process.exit(1)
 }
 
-console.log(`verify-skills: OK — ${candidates.length} skills registered, ${files.length} files checked`)
+console.log(
+  `verify-skills: OK — ${candidates.length} skills registered, ` +
+    `bootstrap injected once (${injected[0].content[0].text.length} chars), ${files.length} files checked`
+)
 for (const candidate of candidates.sort((a, b) => a.name.localeCompare(b.name))) {
   console.log(`  ${candidate.name}`)
 }

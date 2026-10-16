@@ -143,7 +143,7 @@ dsh plugin --profile web remove superpowers-dsh
 
 ### Known compatibility notes
 
-- **This v7 sync did not change the DSH provider code**; the runtime check against the SDK extracted from `app.asar` passed. The static contract was not verified because the archive omitted the declaration file.
+- **This v7 sync does change the DSH provider code**: `lib/index.js` gained the session bootstrap (`agent/created` + `agent.inject()`); the rest of the provider logic is unchanged. The runtime check against the SDK extracted from `app.asar` passed. The static contract was not verified because the archive omitted the declaration file.
 - DSH releases since `0.1.7-rc.2` include the `evaluatePluginCompatibility` gate. It only inspects a plugin's declared `@deepseek-ai/dsh*` peerDependencies and skips the bundle when a declared range does not match. This plugin declares none, so the gate does not version-check it; rerun the check below after a DSH upgrade.
 - **Same-name precedence is deliberate**: the plugin registers at
   `PACKAGED_SKILL_RANK = 550` while DSH's bundled root is
@@ -171,6 +171,7 @@ Current runtime check output (SDK path abbreviated):
 dsh SDK      : @deepseek-ai/dsh-skill 0.2.0-rc.2
 mounted      : 15 skills listed and read through the real SkillRegistry
 rank         : PACKAGED_SKILL_RANK=550 is below BUNDLED_SKILL_RANK=600
+bootstrap    : agent/created injects 3728 chars of using-superpowers; subagent sessions skipped
 note         : SDK type declarations are not present at .../lib/types/index.d.ts; static contract skipped
 
 check-dsh-compat: OK — runtime contracts match; static contract was not available
@@ -222,6 +223,13 @@ skipped and clearly reported; runtime mount or rank failures still exit 1.
   - `get()` reads the winning candidate's body on demand and returns a
     full skill definition with `resourceBase` pointing at the skill's
     directory, so relative references (scripts, prompt templates) resolve.
+- **Session bootstrap** — when a session is created (`agent/created`) the
+  plugin injects the full body of `skills/using-superpowers/SKILL.md`
+  (~3.7 KB) as a user message via `agent.inject()`, so it lands before the
+  session's first step; subagent sessions are skipped. The "check skills
+  before acting" rule is therefore in context before the first user message,
+  matching what upstream's `hooks/session-start` does for Claude Code — with
+  no bash, no hook config file, and no Windows polyglot script.
 - **Zero runtime dependencies** — the plugin imports only Node built-ins and
   consumes the injected `ctx.skills` service interface.
 
@@ -263,6 +271,16 @@ What changed in this v7.0.0 sync:
 
 ## Porting notes (vs. upstream obra/superpowers)
 
+- **The bootstrap is re-implemented**: upstream injects `using-superpowers` via
+  a SessionStart command hook declared in `.claude-plugin/hooks/hooks.json`
+  (`hooks/session-start` plus the `run-hook.cmd` polyglot). Here it is a
+  Cordis `agent/created` listener plus `agent.inject()`. Why: the upstream
+  script needs `${CLAUDE_PLUGIN_ROOT}` expanded, but DSH's official
+  `@deepseek-ai/dsh-hooks-claude-code` only substitutes that token inside the
+  command string and never exports the variable to the hook process — the
+  script takes the wrong branch and the injection is dropped silently. Doing
+  it in-process also sidesteps bash/polyglot availability on Windows. The
+  `hooks/` directory is therefore not shipped.
 - Namespace prefixes removed: `superpowers:brainstorming` → `brainstorming`
   (DSH skills are addressed by bare name).
 - `using-superpowers` now documents the DSH `skill` tool and points at
@@ -271,6 +289,13 @@ What changed in this v7.0.0 sync:
   per-harness reference list (Claude Code / Codex / Gemini / Copilot / Pi /
   Antigravity / Hermes / Muse) collapses to the DSH file; the other
   `references/*-tools.md` files are not shipped.
+- The Hooks row in `dsh-tools.md` is corrected (it used to read "DSH has no
+  hook system"): there are no hook *files*, but plugins can listen to the
+  harness's own events (`tools/pre-execute`, `tools/post-execute`,
+  `agent/created`, `agent/pre-step`, `system-prompt/assemble`, ...) and use
+  `ctx.tools.guard()` to deny a call or `ctx.tools.restrict()` to narrow the
+  tool set; official bridges exist for Claude Code and Codex hook files.
+  Skills still must not assume such a plugin is installed.
 - Subagent references map to DSH's `subagent` / `subagent_fork`. Upstream's
   named agent (`superpowers:code-reviewer`) does not exist here; dispatch the
   skill's own prompt template instead.

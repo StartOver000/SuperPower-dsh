@@ -135,7 +135,7 @@ dsh plugin --profile web remove superpowers-dsh
 
 ### 已知兼容性说明
 
-- **本次 v7 同步未改动 DSH provider 代码**；本机从 app.asar 提取出的实际 SDK 运行时检查通过。由于打包内容缺少类型声明，静态契约部分没有验证。
+- **本次 v7 同步改动了 DSH provider 代码**：`lib/index.js` 增加了会话引导（`agent/created` 监听 + `agent.inject()`），其余 provider 逻辑未变；本机从 app.asar 提取出的实际 SDK 运行时检查通过。由于打包内容缺少类型声明，静态契约部分没有验证。
 - 上游 DSH 从 `0.1.7-rc.2` 起加入插件兼容性闸门 `evaluatePluginCompatibility`：它**只检查插件自己声明的 `@deepseek-ai/dsh*` peerDependencies**，范围不满足就把整个 bundle 跳过并报错。本插件不声明这些 peerDependencies，因此闸门不会校验它的版本；升级 DSH 后应运行下面的复核命令。
 - **同名技能的优先级是有意选择**：插件以 `PACKAGED_SKILL_RANK = 550` 注册，DSH 内置
   bundled 根为 `BUNDLED_SKILL_RANK = 600`（数值越小越优先），所以**同名时你自己的技能
@@ -161,6 +161,7 @@ node scripts/check-dsh-compat.mjs D:\path\to\profile\node_modules
 dsh SDK      : @deepseek-ai/dsh-skill 0.2.0-rc.2
 mounted      : 15 skills listed and read through the real SkillRegistry
 rank         : PACKAGED_SKILL_RANK=550 is below BUNDLED_SKILL_RANK=600
+bootstrap    : agent/created injects 3728 chars of using-superpowers; subagent sessions skipped
 note         : SDK type declarations are not present at .../lib/types/index.d.ts; static contract skipped
 
 check-dsh-compat: OK — runtime contracts match; static contract was not available
@@ -206,6 +207,12 @@ check-dsh-compat: OK — runtime contracts match; static contract was not availa
     从 YAML frontmatter 解析出 `name`、`description`、`whenToUse`。
   - `get()` 按需读取候选技能正文，返回完整技能定义，`resourceBase` 指向
     技能所在目录，使相对引用（脚本、提示模板）可以正确解析。
+- **会话引导（bootstrap）** —— 新建会话时（`agent/created` 事件）插件把
+  `skills/using-superpowers/SKILL.md` 的完整正文（约 3.7 KB）作为一条
+  user 消息经 `agent.inject()` 注入，落在该会话第一步之前；子智能体会话
+  跳过。这样「先查技能再动手」在第一条用户消息之前就已在上下文里，
+  与上游 `hooks/session-start` 对 Claude Code 的效果等价，但不依赖 bash、
+  不写 hook 配置文件，也不要求 windows polyglot 脚本能跑。
 - **零运行时依赖** —— 插件只使用 Node 内置模块，消费注入的 `ctx.skills`
   服务接口。
 
@@ -245,6 +252,14 @@ node scripts/check-dsh-compat.mjs
 
 ## 移植说明（对比上游 obra/superpowers）
 
+- **引导方式换了实现**：上游用 `.claude-plugin/hooks/hooks.json` 里的
+  SessionStart 命令 hook（`hooks/session-start` + `run-hook.cmd` polyglot
+  脚本）把 `using-superpowers` 注入会话；DSH 这里改成 Cordis 插件内的
+  `agent/created` 监听 + `agent.inject()`。选择理由：上游脚本要求
+  `${CLAUDE_PLUGIN_ROOT}` 被展开，而 DSH 官方的
+  `@deepseek-ai/dsh-hooks-claude-code` 只替换命令字符串、从不把该环境变量
+  导出给 hook 进程，脚本会走错分支并静默丢失注入；插件内实现还避开了
+  Windows 下 bash / polyglot 的可用性问题。`hooks/` 目录因此不随包分发。
 - 去掉了命名空间前缀：`superpowers:brainstorming` → `brainstorming`
   （DSH 技能用裸名称寻址）。
 - `using-superpowers` 现在介绍 DSH 的 `skill` 工具，并指向
@@ -253,6 +268,12 @@ node scripts/check-dsh-compat.mjs
   上游那份“按 harness 选参考文件”的清单（Claude Code / Codex / Gemini /
   Copilot / Pi / Antigravity / Hermes / Muse）只保留 DSH 一份，其余上游
   `references/*-tools.md` 不随包分发。
+- `dsh-tools.md` 的 Hooks 一行已改正（原写作 “DSH 没有 hook 系统”）：DSH 没有
+  hook *文件*，但插件可以监听 harness 自己的事件（`tools/pre-execute`、
+  `tools/post-execute`、`agent/created`、`agent/pre-step`、
+  `system-prompt/assemble` ...），并用 `ctx.tools.guard()` 拒绝调用、
+  `ctx.tools.restrict()` 收敛工具集合；官方也提供 Claude Code / Codex 两套
+  hook 文件桥接包。技能本身仍不得假定这类插件已装。
 - 子代理引用映射到 DSH 的 `subagent` / `subagent_fork`；上游的命名 agent
   （`superpowers:code-reviewer`）在 DSH 不存在，按技能自带的 prompt 模板派发。
 - `using-superpowers` 里的 `<SUBAGENT-STOP>` 不再保留：DSH 的子代理同样需要

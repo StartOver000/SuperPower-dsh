@@ -8,6 +8,22 @@ import test from 'node:test'
 
 const checkerPath = fileURLToPath(new URL('./check-dsh-compat.mjs', import.meta.url))
 
+/**
+ * Minimal stand-in for the installed @deepseek-ai/cordis Context: the plugin
+ * registers an `agent/created` listener with on() and the harness drives it
+ * with serial(). Mirrors both halves of the real dispatch contract the plugin
+ * depends on.
+ */
+const FAKE_CORDIS = `
+  export class Context {
+    constructor() { this.listeners = {} }
+    on(name, listener) { (this.listeners[name] ??= []).push(listener) }
+    async serial(name, ...args) {
+      for (const listener of this.listeners[name] ?? []) await listener(...args)
+    }
+  }
+`
+
 function runChecker(env, scriptPath = checkerPath) {
   return spawnSync(process.execPath, [scriptPath], { env, encoding: 'utf8' })
 }
@@ -43,7 +59,7 @@ test('keeps runtime checks when the bundled SDK omits type declarations', () => 
     writeFileSync(join(dir, 'lib', 'index.js'), source)
   }
 
-  addPackage('@deepseek-ai/cordis', 'export class Context {}')
+  addPackage('@deepseek-ai/cordis', FAKE_CORDIS)
   addPackage('@deepseek-ai/dsh-skill', `
     export const BUNDLED_SKILL_RANK = 600
     export class SkillRegistry {
@@ -71,6 +87,8 @@ test('keeps runtime checks when the bundled SDK omits type declarations', () => 
     assert.match(result.stdout, /static contract skipped/)
     assert.match(result.stdout, /mounted\s+: 15 skills/)
     assert.match(result.stdout, /BUNDLED_SKILL_RANK=600/)
+    assert.match(result.stdout, /bootstrap\s+: agent\/created injects \d+ chars of using-superpowers/)
+    assert.match(result.stdout, /subagent sessions skipped/)
   } finally {
     rmSync(modulesDir, { recursive: true, force: true })
   }
@@ -106,7 +124,7 @@ test('fails when the packaged skill rank cannot be read', () => {
         }))
       }
     `)
-    addPackage('@deepseek-ai/cordis', 'export class Context {}')
+    addPackage('@deepseek-ai/cordis', FAKE_CORDIS)
     addPackage('@deepseek-ai/dsh-skill', `
       export const BUNDLED_SKILL_RANK = 600
       export class SkillRegistry {
@@ -131,6 +149,68 @@ test('fails when the packaged skill rank cannot be read', () => {
     const result = runChecker(env, join(root, 'scripts', 'check-dsh-compat.mjs'))
     assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`)
     assert.match(result.stderr, /could not find PACKAGED_SKILL_RANK in lib\/index\.js/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('fails when the plugin registers skills but drops the session bootstrap', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-plugin-no-bootstrap-'))
+  const modulesDir = join(root, 'node_modules')
+  const env = { ...process.env, DSH_NODE_MODULES: modulesDir }
+  delete env.DSH_PROFILE_DIR
+
+  const addPackage = (name, source) => {
+    const dir = join(modulesDir, ...name.split('/'))
+    mkdirSync(join(dir, 'lib'), { recursive: true })
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({
+      name,
+      version: '1.0.0',
+      type: 'module',
+      main: 'lib/index.js'
+    }))
+    writeFileSync(join(dir, 'lib', 'index.js'), source)
+  }
+
+  try {
+    mkdirSync(join(root, 'scripts'), { recursive: true })
+    mkdirSync(join(root, 'lib'), { recursive: true })
+    writeFileSync(join(root, 'scripts', 'check-dsh-compat.mjs'), readFileSync(checkerPath, 'utf8'))
+    writeFileSync(join(root, 'lib', 'index.js'), `
+      const PACKAGED_SKILL_RANK = 550
+      export function apply(ctx) {
+        ctx.skills.registerProvider(() => ({
+          async list() { return [{ name: 'demo' }] },
+          async get() { return { content: 'body', resourceBase: { kind: 'directory' } } }
+        }))
+      }
+    `)
+    addPackage('@deepseek-ai/cordis', FAKE_CORDIS)
+    addPackage('@deepseek-ai/dsh-skill', `
+      export const BUNDLED_SKILL_RANK = 600
+      export class SkillRegistry {
+        constructor(ctx) {
+          const providers = []
+          ctx.skills = {
+            registerProvider(factory) { providers.push(factory({})) },
+            async list(options = {}) {
+              return (await Promise.all(providers.map((provider) => provider.list(options)))).flat()
+            },
+            async get(name, options = {}) {
+              for (const provider of providers) {
+                const candidate = (await provider.list(options)).find((item) => item.name === name)
+                if (candidate) return provider.get(candidate, options)
+              }
+            }
+          }
+        }
+      }
+    `)
+
+    const result = runChecker(env, join(root, 'scripts', 'check-dsh-compat.mjs'))
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`)
+    assert.match(result.stderr, /does not listen for 'agent\/created'/)
+    assert.match(result.stderr, /sessions would start without the bootstrap/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
