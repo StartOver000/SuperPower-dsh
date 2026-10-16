@@ -146,23 +146,31 @@ if (skill && cordis) {
     fail("lib/index.js does not listen for 'agent/created'; sessions would start without the bootstrap")
   } else if (!/agent\.inject\(/.test(source)) {
     fail('the agent/created listener does not call agent.inject(); the bootstrap never reaches the model')
+  } else if (!/ctx\.on\(\s*['"]session\/event['"]/.test(source)) {
+    fail(
+      "lib/index.js does not listen for 'session/event'; compaction would summarize the bootstrap away " +
+        'and never re-establish it'
+    )
+  } else if (!/compaction\/end/.test(source)) {
+    fail("the session/event listener does not handle 'compaction/end'; upstream re-runs SessionStart on compact")
   } else if (typeof ctx?.serial !== 'function') {
     note('the installed cordis Context exposes no serial(); bootstrap injection was not driven')
   } else {
     const skillText = await readFile(join(pkgRoot, 'skills', 'using-superpowers', 'SKILL.md'), 'utf8')
     const injected = []
-    const agentFor = (header) => ({
-      session: { header },
+    const agentFor = (session) => ({
+      session,
       inject(message) {
         injected.push(message)
       }
     })
     const header = { version: 1, id: 'compat', createdAt: 0, isSeeded: false }
-    await ctx.serial('agent/created', { agent: agentFor(header), source: { kind: 'fresh' } })
-    await ctx.serial('agent/created', {
-      agent: agentFor({ ...header, id: 'compat-child', origin: 'subagent', delegationDepth: 1 }),
-      source: { kind: 'fresh' }
-    })
+    const realSession = { header }
+    const childSession = {
+      header: { ...header, id: 'compat-child', origin: 'subagent', delegationDepth: 1 }
+    }
+    await ctx.serial('agent/created', { agent: agentFor(realSession), source: { kind: 'fresh' } })
+    await ctx.serial('agent/created', { agent: agentFor(childSession), source: { kind: 'fresh' } })
     if (injected.length !== 1) {
       fail(
         `driving agent/created injected ${injected.length} bootstrap message(s), expected 1 ` +
@@ -183,10 +191,39 @@ if (skill && cordis) {
       if (!text.includes("use the 'skill' tool")) {
         fail('the bootstrap message does not name the harness skill tool')
       }
-      if (problems.length === 0) {
-        console.log(
-          `bootstrap    : agent/created injects ${text.length} chars of using-superpowers; subagent sessions skipped`
+      // A compaction replaces the span the bootstrap opened, so the plugin has
+      // to re-inject on a clean `compaction/end` — and must not when compaction
+      // failed, because then nothing was replaced.
+      const settle = () => new Promise((resolve) => setImmediate(resolve))
+      const beforeCompaction = injected.length
+      await ctx.serial('session/event', realSession, {
+        type: 'compaction/end',
+        data: { compactionId: 'compat-1', turn: 1 }
+      })
+      await settle()
+      if (injected.length !== beforeCompaction + 1) {
+        fail(
+          `a clean compaction/end re-injected ${injected.length - beforeCompaction} bootstrap message(s), ` +
+            'expected 1 (upstream re-runs its SessionStart hook on compact)'
         )
+      } else {
+        await ctx.serial('session/event', realSession, {
+          type: 'compaction/end',
+          data: { compactionId: 'compat-2', turn: 2, error: 'summarizer failed' }
+        })
+        await ctx.serial('session/event', childSession, {
+          type: 'compaction/end',
+          data: { compactionId: 'compat-3', turn: 1 }
+        })
+        await settle()
+        if (injected.length !== beforeCompaction + 1) {
+          fail('a failed compaction, or a subagent session, re-injected the bootstrap')
+        } else if (problems.length === 0) {
+          console.log(
+            `bootstrap    : agent/created injects ${text.length} chars of using-superpowers; ` +
+              'refreshed on compaction/end; subagent sessions skipped'
+          )
+        }
       }
     }
   }

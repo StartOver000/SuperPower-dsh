@@ -58,7 +58,7 @@ npm 上的 `superpowers-dsh@0.2.0` 是上游父仓库发布的 v6.4.2 版本；�
 dsh plugin --profile web add superpowers-dsh@0.2.0
 ```
 
-要安装本仓库 v0.2.1 / 上游技能 v7.0.0，请使用上面的 GitHub 安装命令。本 fork 尚未发布独立 npm 包。
+要安装本仓库 v0.3.1 / 上游技能 v7.0.0，请使用上面的 GitHub 安装命令。本 fork 尚未发布独立 npm 包。
 
 ### 从 GitHub 安装
 
@@ -129,13 +129,13 @@ dsh plugin --profile web remove superpowers-dsh
 | 插件依赖的 DSH 接口 | `ctx.skills.registerProvider(...)`（技能提供者注册）与 `dsh.bundle.patch`（bundle 挂载自己的 `cordis.patch.yml`） |
 | 当前运行时验证 | `@deepseek-ai/dsh-skill 0.2.0-rc.2` 的真实 `SkillRegistry` 列出 15 个技能，逐个 `get()` 均返回正文与目录资源基路径 |
 | 静态类型契约 | app.asar 中未包含 `lib/types/index.d.ts`；兼容检查器会标记为跳过，不能据此声称静态类型接口已验证 |
-| 插件自身版本 | `0.2.1`（本地 fork，未单独发布；技能内容同步自 obra/superpowers `v7.0.0`） |
+| 插件自身版本 | `0.3.1`（本地 fork，未单独发布；技能内容同步自 obra/superpowers `v7.0.0`） |
 | 运行时依赖 | 无。只用 Node 内置模块，不引入任何第三方依赖 |
 | Node.js | 本次实测使用 DSH 随附 Node `v24.21.0`；DSH 自身未声明 `engines`，本插件也未限制 |
 
 ### 已知兼容性说明
 
-- **本次 v7 同步改动了 DSH provider 代码**：`lib/index.js` 增加了会话引导（`agent/created` 监听 + `agent.inject()`），其余 provider 逻辑未变；本机从 app.asar 提取出的实际 SDK 运行时检查通过。由于打包内容缺少类型声明，静态契约部分没有验证。
+- **本次 v7 同步改动了 DSH provider 代码**：`lib/index.js` 增加了会话引导（`agent/created` 监听 + `agent.inject()`），以及压缩后的再注入（`session/event` 上的 `compaction/end`），其余 provider 逻辑未变；本机从 app.asar 提取出的实际 SDK 运行时检查通过。由于打包内容缺少类型声明，静态契约部分没有验证。
 - 上游 DSH 从 `0.1.7-rc.2` 起加入插件兼容性闸门 `evaluatePluginCompatibility`：它**只检查插件自己声明的 `@deepseek-ai/dsh*` peerDependencies**，范围不满足就把整个 bundle 跳过并报错。本插件不声明这些 peerDependencies，因此闸门不会校验它的版本；升级 DSH 后应运行下面的复核命令。
 - **同名技能的优先级是有意选择**：插件以 `PACKAGED_SKILL_RANK = 550` 注册，DSH 内置
   bundled 根为 `BUNDLED_SKILL_RANK = 600`（数值越小越优先），所以**同名时你自己的技能
@@ -161,7 +161,7 @@ node scripts/check-dsh-compat.mjs D:\path\to\profile\node_modules
 dsh SDK      : @deepseek-ai/dsh-skill 0.2.0-rc.2
 mounted      : 15 skills listed and read through the real SkillRegistry
 rank         : PACKAGED_SKILL_RANK=550 is below BUNDLED_SKILL_RANK=600
-bootstrap    : agent/created injects 3728 chars of using-superpowers; subagent sessions skipped
+bootstrap    : agent/created injects 3728 chars of using-superpowers; refreshed on compaction/end; subagent sessions skipped
 note         : SDK type declarations are not present at .../lib/types/index.d.ts; static contract skipped
 
 check-dsh-compat: OK — runtime contracts match; static contract was not available
@@ -170,8 +170,11 @@ check-dsh-compat: OK — runtime contracts match; static contract was not availa
 它检查 SDK 是否存在及版本；如果 SDK 带有类型声明，则校验本插件实现的接口
 （`registerProvider`、`SkillProvider.list/get`、`SkillCandidate`、`SkillResourceBase`、
 `'custom'` 来源桶）；随后把 `lib/index.js` 挂进真实 `SkillRegistry` 并逐个读回技能，
-再从 SDK runtime 导出的 `BUNDLED_SKILL_RANK` 比较 rank。缺少 `.d.ts` 时只跳过静态部分，
-会在输出中明确标注；运行时挂载或 rank 检查失败仍会 `exit 1`。
+再从 SDK runtime 导出的 `BUNDLED_SKILL_RANK` 比较 rank；最后用**真实 cordis
+上下文**派发一次 `agent/created`（普通会话 + 子智能体会话）和一个干净的
+`compaction/end`、一个失败的 `compaction/end`，确认引导消息恰好注入两次
+（首注入 + 压缩后重注入），子智能体与失败压缩不注入。缺少 `.d.ts` 时只跳过
+静态部分，会在输出中明确标注；运行时挂载或 rank 检查失败仍会 `exit 1`。
 
 > 结论以**验证时的 DSH 版本**为准。如果你跑的是更新的 DSH，先跑一遍上面的命令；
 > 上游一旦改动技能接口，它会报告可验证的具体变化，而不是等到技能悄悄消失。
@@ -213,6 +216,13 @@ check-dsh-compat: OK — runtime contracts match; static contract was not availa
   跳过。这样「先查技能再动手」在第一条用户消息之前就已在上下文里，
   与上游 `hooks/session-start` 对 Claude Code 的效果等价，但不依赖 bash、
   不写 hook 配置文件，也不要求 windows polyglot 脚本能跑。
+- **压缩后重新注入** —— 引导消息是会话表层最前面的一条 user 消息，DSH
+  压缩时它会随被替换的那段历史一起被摘要掉。上游 SessionStart 的 matcher
+  是 `startup|clear|compact`，所以插件同时监听 `session/event`，在一个
+  干净的 `compaction/end` 上重新注入；压缩失败时事件带 `data.error`、
+  原表层并未被替换，因此不注入。`agent.inject()` 记为
+  `agent/inbox/spliced`，进入下一个被接纳的 step，不唤醒 agent，因此
+  在回合中途调用是安全的。
 - **零运行时依赖** —— 插件只使用 Node 内置模块，消费注入的 `ctx.skills`
   服务接口。
 
@@ -254,8 +264,10 @@ node scripts/check-dsh-compat.mjs
 
 - **引导方式换了实现**：上游用 `.claude-plugin/hooks/hooks.json` 里的
   SessionStart 命令 hook（`hooks/session-start` + `run-hook.cmd` polyglot
-  脚本）把 `using-superpowers` 注入会话；DSH 这里改成 Cordis 插件内的
-  `agent/created` 监听 + `agent.inject()`。选择理由：上游脚本要求
+  脚本）把 `using-superpowers` 注入会话；DSH 这里改成 Cordis 插件内的两个
+  触发点：`agent/created` 监听 + `agent.inject()`（对应上游 matcher 的
+  `startup`），以及 `session/event` 上干净的 `compaction/end`（对应
+  `compact`；`clear` 在 DSH 侧没有等价事件）。选择理由：上游脚本要求
   `${CLAUDE_PLUGIN_ROOT}` 被展开，而 DSH 官方的
   `@deepseek-ai/dsh-hooks-claude-code` 只替换命令字符串、从不把该环境变量
   导出给 hook 进程，脚本会走错分支并静默丢失注入；插件内实现还避开了

@@ -63,7 +63,7 @@ The npm package `superpowers-dsh@0.2.0` is the upstream parent's v6.4.2 release;
 dsh plugin --profile web add superpowers-dsh@0.2.0
 ```
 
-To install this repository's v0.2.1 / upstream skill v7.0.0, use the GitHub command above. This fork has not published a separate npm package.
+To install this repository's v0.3.1 / upstream skill v7.0.0, use the GitHub command above. This fork has not published a separate npm package.
 
 ### Install from GitHub
 
@@ -137,13 +137,13 @@ dsh plugin --profile web remove superpowers-dsh
 | DSH interfaces this plugin uses | `ctx.skills.registerProvider(...)` (skill provider registration) and `dsh.bundle.patch` (a bundle mounting its own `cordis.patch.yml`) |
 | Current runtime check | The real `SkillRegistry` from `@deepseek-ai/dsh-skill 0.2.0-rc.2` listed 15 skills; `get()` returned each body and directory resource base |
 | Static type contract | `lib/types/index.d.ts` is absent from the `app.asar` package; the checker reports this as skipped, not as verified |
-| This plugin's version | `0.2.1` (local fork, not separately published; skill content synced from obra/superpowers `v7.0.0`) |
+| This plugin's version | `0.3.1` (local fork, not separately published; skill content synced from obra/superpowers `v7.0.0`) |
 | Runtime dependencies | None. Node built-ins only |
 | Node.js | The check used the DSH-bundled Node `v24.21.0`; neither DSH nor this plugin declares an `engines` range |
 
 ### Known compatibility notes
 
-- **This v7 sync does change the DSH provider code**: `lib/index.js` gained the session bootstrap (`agent/created` + `agent.inject()`); the rest of the provider logic is unchanged. The runtime check against the SDK extracted from `app.asar` passed. The static contract was not verified because the archive omitted the declaration file.
+- **This v7 sync does change the DSH provider code**: `lib/index.js` gained the session bootstrap (`agent/created` + `agent.inject()`) and its post-compaction refresh (`compaction/end` on `session/event`); the rest of the provider logic is unchanged. The runtime check against the SDK extracted from `app.asar` passed. The static contract was not verified because the archive omitted the declaration file.
 - DSH releases since `0.1.7-rc.2` include the `evaluatePluginCompatibility` gate. It only inspects a plugin's declared `@deepseek-ai/dsh*` peerDependencies and skips the bundle when a declared range does not match. This plugin declares none, so the gate does not version-check it; rerun the check below after a DSH upgrade.
 - **Same-name precedence is deliberate**: the plugin registers at
   `PACKAGED_SKILL_RANK = 550` while DSH's bundled root is
@@ -171,7 +171,7 @@ Current runtime check output (SDK path abbreviated):
 dsh SDK      : @deepseek-ai/dsh-skill 0.2.0-rc.2
 mounted      : 15 skills listed and read through the real SkillRegistry
 rank         : PACKAGED_SKILL_RANK=550 is below BUNDLED_SKILL_RANK=600
-bootstrap    : agent/created injects 3728 chars of using-superpowers; subagent sessions skipped
+bootstrap    : agent/created injects 3728 chars of using-superpowers; refreshed on compaction/end; subagent sessions skipped
 note         : SDK type declarations are not present at .../lib/types/index.d.ts; static contract skipped
 
 check-dsh-compat: OK — runtime contracts match; static contract was not available
@@ -182,8 +182,13 @@ are included, it checks the interface used by this plugin (`registerProvider`,
 `SkillProvider.list/get`, `SkillCandidate`, `SkillResourceBase`, and the `'custom'`
 source bucket). It then mounts `lib/index.js` in the real `SkillRegistry`, reads
 back every skill, and compares ranks using the SDK runtime's exported
-`BUNDLED_SKILL_RANK`. When `.d.ts` files are absent, only the static check is
-skipped and clearly reported; runtime mount or rank failures still exit 1.
+`BUNDLED_SKILL_RANK`. Finally it drives the **real cordis context**: one
+`agent/created` for a normal session plus one for a subagent session, then a clean
+`compaction/end` and a failed one, asserting the bootstrap is injected exactly
+twice (first injection plus the post-compaction refresh) and that neither a
+subagent session nor a failed compaction injects. When `.d.ts` files are absent,
+only the static check is skipped and clearly reported; runtime mount or rank
+failures still exit 1.
 
 > The conclusion holds for the DSH version it was verified against. On a newer
 > DSH, run the command above first: if upstream changes the skill interface it
@@ -230,6 +235,14 @@ skipped and clearly reported; runtime mount or rank failures still exit 1.
   before acting" rule is therefore in context before the first user message,
   matching what upstream's `hooks/session-start` does for Claude Code — with
   no bash, no hook config file, and no Windows polyglot script.
+- **Post-compaction refresh** — the bootstrap is one user message at the head
+  of the session surface, so compaction summarizes it away along with the rest
+  of the span it replaces. Upstream's SessionStart matcher is
+  `startup|clear|compact`, so the plugin also listens on `session/event` and
+  re-injects on a clean `compaction/end`; a failed compaction carries
+  `data.error` and nothing was replaced, so it does not inject. `agent.inject()`
+  is logged as `agent/inbox/spliced` and enters the next admitted step without
+  waking the agent, which is what makes calling it mid-turn safe.
 - **Zero runtime dependencies** — the plugin imports only Node built-ins and
   consumes the injected `ctx.skills` service interface.
 
@@ -273,8 +286,10 @@ What changed in this v7.0.0 sync:
 
 - **The bootstrap is re-implemented**: upstream injects `using-superpowers` via
   a SessionStart command hook declared in `.claude-plugin/hooks/hooks.json`
-  (`hooks/session-start` plus the `run-hook.cmd` polyglot). Here it is a
-  Cordis `agent/created` listener plus `agent.inject()`. Why: the upstream
+  (`hooks/session-start` plus the `run-hook.cmd` polyglot). Here it is two
+  Cordis triggers: an `agent/created` listener plus `agent.inject()` for the
+  matcher's `startup` arm, and a clean `compaction/end` on `session/event` for
+  its `compact` arm (`clear` has no DSH equivalent). Why: the upstream
   script needs `${CLAUDE_PLUGIN_ROOT}` expanded, but DSH's official
   `@deepseek-ai/dsh-hooks-claude-code` only substitutes that token inside the
   command string and never exports the variable to the hook process — the

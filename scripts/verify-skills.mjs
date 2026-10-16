@@ -10,8 +10,9 @@
  *   2. Frontmatter parses, `name` matches its directory, `description` is set.
  *   3. `agent/created` injects the using-superpowers bootstrap exactly once per
  *      real session, never in a subagent session.
- *   4. No upstream `superpowers:` namespace prefix survived the port.
- *   5. Every relative markdown link and every referenced `scripts/...` or
+ *   4. A clean `compaction/end` re-injects it, and a failed compaction does not.
+ *   5. No upstream `superpowers:` namespace prefix survived the port.
+ *   6. Every relative markdown link and every referenced `scripts/...` or
  *      `references/...` path points at a file that ships in this package.
  *
  * Exits non-zero listing every offender.
@@ -51,19 +52,18 @@ if (!provider) throw new Error('apply() did not register a provider')
 // The skills are inert unless the bootstrap reaches the model, so drive
 // `agent/created` the way the harness dispatches it and inspect the injection.
 const injected = []
-const agentFor = (header) => ({
-  session: { header },
+const realSession = { header: { id: 'verify' } }
+const childSession = { header: { id: 'verify-child', origin: 'subagent', delegationDepth: 1 } }
+const agentFor = (session) => ({
+  session,
   inject(message) {
     injected.push(message)
   }
 })
 const bootstrapListeners = listeners['agent/created'] ?? []
 for (const listener of bootstrapListeners) {
-  await listener({ agent: agentFor({ id: 'verify' }), source: { kind: 'fresh' } })
-  await listener({
-    agent: agentFor({ id: 'verify-child', origin: 'subagent', delegationDepth: 1 }),
-    source: { kind: 'fresh' }
-  })
+  await listener({ agent: agentFor(realSession), source: { kind: 'fresh' } })
+  await listener({ agent: agentFor(childSession), source: { kind: 'fresh' } })
 }
 if (bootstrapListeners.length === 0) {
   fail("lib/index.js registers no 'agent/created' listener; sessions would start without the bootstrap")
@@ -75,6 +75,38 @@ if (bootstrapListeners.length === 0) {
   if (injected[0].role !== 'user') fail(`the bootstrap message has role ${injected[0].role}, expected user`)
   if (!text.includes(skillText)) fail('the injected bootstrap does not carry skills/using-superpowers/SKILL.md')
   if (!text.includes("use the 'skill' tool")) fail("the injected bootstrap does not name DSH's skill tool")
+}
+
+// The bootstrap is one user message at the head of the surface, so a compaction
+// summarizes it away with the rest of the replaced span. Upstream re-runs its
+// SessionStart hook on `startup|clear|compact`; this is the port's `compact` arm.
+// A failed compaction leaves the surface intact and must not re-inject.
+const beforeCompaction = injected.length
+const sessionListeners = listeners['session/event'] ?? []
+const settle = () => new Promise((resolve) => setImmediate(resolve))
+if (sessionListeners.length === 0) {
+  fail("lib/index.js registers no 'session/event' listener; the bootstrap would not survive compaction")
+} else {
+  for (const listener of sessionListeners) {
+    listener(realSession, { type: 'compaction/end', data: { compactionId: 'c1', turn: 1 } })
+  }
+  await settle()
+  if (injected.length !== beforeCompaction + 1) {
+    fail(
+      `a clean compaction/end re-injected ${injected.length - beforeCompaction} bootstrap message(s), expected 1`
+    )
+  }
+  for (const listener of sessionListeners) {
+    listener(realSession, {
+      type: 'compaction/end',
+      data: { compactionId: 'c2', turn: 2, error: 'summarizer failed' }
+    })
+    listener(childSession, { type: 'compaction/end', data: { compactionId: 'c3', turn: 1 } })
+  }
+  await settle()
+  if (injected.length !== beforeCompaction + 1) {
+    fail('a failed compaction, or a subagent session, re-injected the bootstrap')
+  }
 }
 
 const candidates = await provider.list({})
@@ -187,7 +219,8 @@ if (problems.length > 0) {
 
 console.log(
   `verify-skills: OK — ${candidates.length} skills registered, ` +
-    `bootstrap injected once (${injected[0].content[0].text.length} chars), ${files.length} files checked`
+    `bootstrap injected once (${injected[0].content[0].text.length} chars) and refreshed on compaction, ` +
+    `${files.length} files checked`
 )
 for (const candidate of candidates.sort((a, b) => a.name.localeCompare(b.name))) {
   console.log(`  ${candidate.name}`)
