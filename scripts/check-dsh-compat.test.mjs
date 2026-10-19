@@ -24,19 +24,26 @@ const FAKE_CORDIS = `
   }
 `
 
-function runChecker(env, scriptPath = checkerPath) {
-  return spawnSync(process.execPath, [scriptPath], { env, encoding: 'utf8' })
+function runChecker(env, scriptPath = checkerPath, args = []) {
+  return spawnSync(process.execPath, [scriptPath, ...args], { env, encoding: 'utf8' })
 }
 
-test('uses the active DSH profile node_modules directory by default', () => {
+test('uses the active DSH profile node_modules directory, skipping without an SDK', () => {
   const profileDir = mkdtempSync(join(tmpdir(), 'dsh-profile-'))
   const env = { ...process.env, DSH_PROFILE_DIR: profileDir }
   delete env.DSH_NODE_MODULES
 
   try {
-    const result = runChecker(env)
-    assert.equal(result.status, 1)
-    assert.ok(result.stderr.includes(join(profileDir, 'node_modules')))
+    // No SDK there and nothing demanded: this is "unchecked", not "broken".
+    const skipped = runChecker(env)
+    assert.equal(skipped.status, 0, `${skipped.stdout}\n${skipped.stderr}`)
+    assert.match(skipped.stdout, /check-dsh-compat: SKIPPED/)
+    assert.ok(skipped.stdout.includes(join(profileDir, 'node_modules')))
+
+    // Demand it explicitly and the missing SDK becomes an error again.
+    const required = runChecker(env, checkerPath, ['--require'])
+    assert.equal(required.status, 1)
+    assert.ok(required.stderr.includes(join(profileDir, 'node_modules')))
   } finally {
     rmSync(profileDir, { recursive: true, force: true })
   }

@@ -23,6 +23,17 @@ skills. Skill bodies ship inside the package (`skills/<name>/SKILL.md`) and
 are located from `import.meta.url` — an assembly fact of the package, never
 user configuration.
 
+## Contents
+
+- [Install & use in your DeepSeek Harness](#install--use-in-your-deepseek-harness)
+- [DSH version compatibility](#dsh-version-compatibility)
+- [Skills](#skills)
+- [How it works](#how-it-works)
+- [Upstream sync](#upstream-sync)
+- [Porting notes](#porting-notes)
+- [Adding your own skills](#adding-your-own-skills)
+- [License](#license)
+
 ## Install & use in your DeepSeek Harness
 
 A **plugin bundle** for DeepSeek Harness (DSH). Installing it registers the
@@ -57,10 +68,10 @@ present.
 
 ### Install from npm (upstream package)
 
-The npm package `superpowers-dsh@0.2.0` is the upstream parent's v6.4.2 release; it does not include this fork's changes:
+The npm package `superpowers-dsh@0.3.0` is published by the upstream parent (skills synced from obra/superpowers v7.0.0), but it does **not** include this fork's session bootstrap (`agent/created` injection, post-compaction refresh) or the other DSH changes in this repository:
 
 ```sh
-dsh plugin --profile web add superpowers-dsh@0.2.0
+dsh plugin --profile web add superpowers-dsh@0.3.0
 ```
 
 To install this repository's v0.3.1 / upstream skill v7.0.0, use the GitHub command above. This fork has not published a separate npm package.
@@ -117,10 +128,10 @@ dsh plugin --profile web remove superpowers-dsh
 
 ### Notes
 
-- If installing the upstream npm package described above (`superpowers-dsh@0.2.0`),
+- If installing the upstream npm package described above (`superpowers-dsh@0.3.0`),
   mainland China users can set the npmmirror registry first:
   `npm config set registry https://registry.npmmirror.com`; use
-  `dsh plugin add superpowers-dsh@0.2.0`.
+  `dsh plugin add superpowers-dsh@0.3.0`.
 - A plugin installed from a folder or `file:` spec is linked, not copied:
   changes to that folder take effect after the next profile restart.
 - Consumers need **no npm account and no 2FA** — installing is a plain
@@ -190,6 +201,12 @@ subagent session nor a failed compaction injects. When `.d.ts` files are absent,
 only the static check is skipped and clearly reported; runtime mount or rank
 failures still exit 1.
 
+On a machine with **no DSH installed** (CI, a fresh container) there is nothing
+to compare against, so it prints `SKIPPED` and exits 0 — that is "unchecked",
+not "failed", so a publish pipeline is never blocked by a missing local DSH.
+Pass an explicit directory or `--require` to make a missing SDK an error, or set
+`DSH_COMPAT_REQUIRE=1 node scripts/check-dsh-compat.mjs`.
+
 > The conclusion holds for the DSH version it was verified against. On a newer
 > DSH, run the command above first: if upstream changes the skill interface it
 > names the exact break instead of letting skills disappear quietly.
@@ -199,7 +216,7 @@ failures still exit 1.
 | Skill | Purpose |
 | --- | --- |
 | `using-superpowers` | How to find and use skills; the entry-point skill |
-| `brainstorming` | Turn ideas into designs through collaborative dialogue |
+| `brainstorming` | Find out what you actually want, and why, before anything gets built |
 | `writing-plans` | Write comprehensive implementation plans from specs |
 | `executing-plans` | Execute a plan inline (Native) in this session, one whole-branch review at the end |
 | `subagent-driven-development` | Dispatch fresh subagents per task with reviews |
@@ -246,7 +263,10 @@ failures still exit 1.
 - **Zero runtime dependencies** — the plugin imports only Node built-ins and
   consumes the injected `ctx.skills` service interface.
 
-## Upstream sync (currently obra/superpowers v7.0.0)
+## Upstream sync
+
+Currently synced upstream version: **obra/superpowers v7.0.0** (recorded in
+`package.json` as `dsh.superpowersUpstream`).
 
 `skills/` is **generated output** — do not hand-edit it. The sync lives in two
 places; change those and re-run:
@@ -282,7 +302,7 @@ What changed in this v7.0.0 sync:
 - Upstream now uses the relative path `visual-companion.md` directly in `brainstorming/SKILL.md`, so the port no longer needs a rewrite for that path; the DSH-specific Windows note is still applied by the sync transform.
 - The catalog remains at 15 skills. The sync script stops for review if the upstream skill set, harness-reference files, or any remaining adaptation anchor changes.
 
-## Porting notes (vs. upstream obra/superpowers)
+## Porting notes
 
 - **The bootstrap is re-implemented**: upstream injects `using-superpowers` via
   a SessionStart command hook declared in `.claude-plugin/hooks/hooks.json`
@@ -324,6 +344,10 @@ What changed in this v7.0.0 sync:
   concatenated zstd frames that need frame-by-frame decompression).
 - `brainstorming`'s visual companion adds a Windows note: the Node server
   (`scripts/server.cjs`) runs everywhere; the `.sh` helpers are bash-only.
+- After the v7.0.0 rewrite, upstream itself names the companion as a bare
+  `visual-companion.md`, so this port's old rewrite of
+  `skills/brainstorming/visual-companion.md` is gone (the sync script carries a
+  NOTE; re-add it if a future release regresses to the path form).
 - `writing-skills/examples/CLAUDE_MD_TESTING.md` ships verbatim (an upstream
   example document that still uses Claude Code paths), so the reference from
   `testing-skills-with-subagents.md` does not dangle.

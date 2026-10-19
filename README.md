@@ -22,6 +22,17 @@ agent preset 的作用域链都会合并这些技能。技能正文随包分发
 （`skills/<name>/SKILL.md`），通过 `import.meta.url` 定位——这是包的
 组装事实，不需要任何用户配置。
 
+## 目录
+
+- [在 DeepSeek Harness 中安装与使用](#在-deepseek-harness-中安装与使用)
+- [DSH 版本兼容性](#dsh-版本兼容性)
+- [技能列表](#技能列表)
+- [工作原理](#工作原理)
+- [上游同步](#上游同步)
+- [移植说明](#移植说明)
+- [添加自己的技能](#添加自己的技能)
+- [许可证](#许可证)
+
 ## 在 DeepSeek Harness 中安装与使用
 
 这是 DeepSeek Harness 的**插件包**。安装后会把下面的 15 个技能注册进
@@ -52,10 +63,11 @@ Agent 会自动完成安装（`dsh plugin --profile web add` → 重启 profile 
 
 ### 从 npm 安装（上游发行包）
 
-npm 上的 `superpowers-dsh@0.2.0` 是上游父仓库发布的 v6.4.2 版本；它不包含本 fork 的改动：
+npm 上的 `superpowers-dsh@0.3.0` 由上游父仓库发布（技能同步自 obra/superpowers v7.0.0），
+但它**不包含本 fork 的会话引导**（`agent/created` 注入、压缩后重注入）等改动：
 
 ```sh
-dsh plugin --profile web add superpowers-dsh@0.2.0
+dsh plugin --profile web add superpowers-dsh@0.3.0
 ```
 
 要安装本仓库 v0.3.1 / 上游技能 v7.0.0，请使用上面的 GitHub 安装命令。本 fork 尚未发布独立 npm 包。
@@ -111,9 +123,9 @@ dsh plugin --profile web remove superpowers-dsh
 
 ### 注意事项
 
-- 如需安装上文所述上游 npm 包 `superpowers-dsh@0.2.0`，国内用户可先设
+- 如需安装上文所述上游 npm 包 `superpowers-dsh@0.3.0`，国内用户可先设
   npmmirror：`npm config set registry https://registry.npmmirror.com`；安装命令使用
-  `dsh plugin add superpowers-dsh@0.2.0`。
+  `dsh plugin add superpowers-dsh@0.3.0`。
 - 从文件夹或 `file:` 规格安装的插件是链接安装（不是复制）：修改该文件夹后，
   下次重启 profile 生效
 - 使用者**不需要 npm 账号，也不需要 2FA**——安装只是普通的包下载
@@ -176,6 +188,11 @@ check-dsh-compat: OK — runtime contracts match; static contract was not availa
 （首注入 + 压缩后重注入），子智能体与失败压缩不注入。缺少 `.d.ts` 时只跳过
 静态部分，会在输出中明确标注；运行时挂载或 rank 检查失败仍会 `exit 1`。
 
+在**没有安装 DSH 的机器**上（例如 CI、干净容器）没有可比对的对象，它会打印
+`SKIPPED` 并 `exit 0`——这是"没检查"，不是"检查失败"（发布流程因此不会被误拦）。
+显式传目录或以 `--require` 运行时，找不到 SDK 仍按错误处理。想强制要求先装 SDK：
+`DSH_COMPAT_REQUIRE=1 node scripts/check-dsh-compat.mjs`。
+
 > 结论以**验证时的 DSH 版本**为准。如果你跑的是更新的 DSH，先跑一遍上面的命令；
 > 上游一旦改动技能接口，它会报告可验证的具体变化，而不是等到技能悄悄消失。
 
@@ -184,7 +201,7 @@ check-dsh-compat: OK — runtime contracts match; static contract was not availa
 | 技能 | 用途 |
 | --- | --- |
 | `using-superpowers` | 如何查找和使用技能；入口技能 |
-| `brainstorming` | 通过协作对话把想法变成设计 |
+| `brainstorming` | 动手前先问清「你到底想要什么、为什么」，理解后再定规模和做法 |
 | `writing-plans` | 根据规格编写全面的实施计划 |
 | `executing-plans` | 本会话内（Native/内联）执行计划，末尾一次整分支评审 |
 | `subagent-driven-development` | 每个任务派发全新子代理并评审 |
@@ -226,7 +243,10 @@ check-dsh-compat: OK — runtime contracts match; static contract was not availa
 - **零运行时依赖** —— 插件只使用 Node 内置模块，消费注入的 `ctx.skills`
   服务接口。
 
-## 上游同步（当前：obra/superpowers v7.0.0）
+## 上游同步
+
+当前同步的上游版本：**obra/superpowers v7.0.0**（记录在 `package.json` 的
+`dsh.superpowersUpstream`）。
 
 `skills/` 是**生成产物**，不要手改。同步逻辑写在两个地方，改它们再重跑即可：
 
@@ -260,7 +280,7 @@ node scripts/check-dsh-compat.mjs
 - 上游已在 `brainstorming/SKILL.md` 中直接改用相对路径 `visual-companion.md`，因此 DSH 不再需要对此做文本转换；DSH 的 Windows 说明仍由同步转换补入。
 - 技能目录仍为 15 个技能；同步脚本会在上游技能集合、跨 harness 参考文件或适配锚点变化时停止，要求先审查再同步。
 
-## 移植说明（对比上游 obra/superpowers）
+## 移植说明
 
 - **引导方式换了实现**：上游用 `.claude-plugin/hooks/hooks.json` 里的
   SessionStart 命令 hook（`hooks/session-start` + `run-hook.cmd` polyglot
@@ -297,6 +317,9 @@ node scripts/check-dsh-compat.mjs
   多 zstd frame 拼接，需按 frame 解压）。
 - `brainstorming` 的视觉伴侣补充了 Windows 说明：Node 服务
   （`scripts/server.cjs`）全平台可跑；`.sh` 辅助脚本仅限 bash。
+- `brainstorming` 在 v7.0.0 重写后，上游正文已直接写 `visual-companion.md`
+  这个裸相对名，所以本 port 原先那条「把 `skills/brainstorming/...` 改写成
+  裸相对名」的适配已删除（同步脚本里留有 NOTE，若上游将来回退再加回）。
 - `writing-skills/examples/CLAUDE_MD_TESTING.md` 原样保留（上游示例文档，
   里面仍是 Claude Code 路径），只为让 `testing-skills-with-subagents.md`
   的引用不断链。
