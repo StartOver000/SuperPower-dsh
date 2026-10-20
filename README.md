@@ -339,6 +339,8 @@ frontmatter 开头（`name` + `description`，可选 `whenToUse`），无需改�
 
 ## 许可证
 
-MIT。技能内容改编自
-[obra/superpowers](https://github.com/obra/superpowers)（MIT），© Jesse Vincent
-及贡献者。
+MIT，许可全文与上游原始版权声明见 [`LICENSE`](LICENSE)。技能内容与方法论来自
+[obra/superpowers](https://github.com/obra/superpowers)（MIT，© Jesse Vincent），
+经 [LayneChai/superpowers-dsh](https://github.com/LayneChai/superpowers-dsh)
+移植到 DSH；完整的来源链、以及本仓库相对上游**刻意保留的差异**见
+[`NOTICE`](NOTICE)。本仓库自己的改动同样以 MIT 授权。

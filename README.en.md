@@ -369,6 +369,11 @@ there directly is deleted. Two safe places:
 
 ## License
 
-MIT. Skill content adapted from
-[obra/superpowers](https://github.com/obra/superpowers) (MIT), © Jesse Vincent
-and contributors.
+MIT — see [`LICENSE`](LICENSE) for the full text and the upstream copyright
+notice. Skill content and methodology come from
+[obra/superpowers](https://github.com/obra/superpowers) (MIT, © Jesse Vincent),
+ported to DSH by
+[LayneChai/superpowers-dsh](https://github.com/LayneChai/superpowers-dsh). The
+full provenance chain and the deliberate differences from upstream are listed in
+[`NOTICE`](NOTICE). Modifications in this repository are released under the same
+MIT license.
