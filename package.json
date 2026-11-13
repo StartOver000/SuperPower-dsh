@@ -24,6 +24,7 @@
     "port",
     "static",
     "cordis.patch.yml",
+    "NOTICE",
     "README.md",
     "README.en.md"
   ],
