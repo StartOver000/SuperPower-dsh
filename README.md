@@ -37,7 +37,7 @@ agent preset 的作用域链都会合并这些技能。技能正文随包分发
 
 这是 DeepSeek Harness 的**插件包**。安装后会把下面的 15 个技能注册进
 host 技能注册表，你 profile 里的每个 agent 会话都能在技能目录中看到它们，
-并可用 `skill` 工具加载。技能内容同步自上游 **obra/superpowers v7.0.0**。
+并可用 `skill` 工具加载。技能内容同步自上游 **obra/superpowers v7.0.2**。
 
 ### 最简单：一条命令
 
@@ -70,7 +70,7 @@ npm 上的 `superpowers-dsh@0.3.0` 由上游父仓库发布（技能同步自 ob
 dsh plugin --profile web add superpowers-dsh@0.3.0
 ```
 
-要安装本仓库 v0.3.1 / 上游技能 v7.0.0，请使用上面的 GitHub 安装命令。本 fork 尚未发布独立 npm 包。
+要安装本仓库 v0.3.2 / 上游技能 v7.0.2，请使用上面的 GitHub 安装命令。本 fork 尚未发布独立 npm 包。
 
 ### 从 GitHub 安装
 
@@ -132,16 +132,16 @@ dsh plugin --profile web remove superpowers-dsh
 
 ## DSH 版本兼容性
 
-**最新实测（2026-10-14）：使用本机 DeepSeek Harness `app.asar` 中的 `@deepseek-ai/dsh-skill 0.2.0-rc.2` 与真实 `SkillRegistry` 校验；15 个技能均能列出并读回，插件 rank 550 低于内置 rank 600。app.asar 未包含 manifest 声明路径下的 `.d.ts`，因此静态类型契约检查被明确跳过。**
+**最新实测（2026-11-13）：使用本机 DeepSeek Harness `app.asar` 中的 `@deepseek-ai/dsh-skill 0.2.2-rc.3` 与真实 `SkillRegistry` 校验；15 个技能均能列出并读回，插件 rank 550 低于内置 rank 600。app.asar 未包含 manifest 声明路径下的 `.d.ts`，因此静态类型契约检查被明确跳过。**
 
 ### 支持矩阵
 
 | 检查项 | 结果 |
 | --- | --- |
 | 插件依赖的 DSH 接口 | `ctx.skills.registerProvider(...)`（技能提供者注册）与 `dsh.bundle.patch`（bundle 挂载自己的 `cordis.patch.yml`） |
-| 当前运行时验证 | `@deepseek-ai/dsh-skill 0.2.0-rc.2` 的真实 `SkillRegistry` 列出 15 个技能，逐个 `get()` 均返回正文与目录资源基路径 |
+| 当前运行时验证 | `@deepseek-ai/dsh-skill 0.2.2-rc.3` 的真实 `SkillRegistry` 列出 15 个技能，逐个 `get()` 均返回正文与目录资源基路径（DSH 从 `0.2.0-rc.2` 升到 `0.2.2-rc.3` 后复测仍通过） |
 | 静态类型契约 | app.asar 中未包含 `lib/types/index.d.ts`；兼容检查器会标记为跳过，不能据此声称静态类型接口已验证 |
-| 插件自身版本 | `0.3.1`（本地 fork，未单独发布；技能内容同步自 obra/superpowers `v7.0.0`） |
+| 插件自身版本 | `0.3.2`（本地 fork，未单独发布；技能内容同步自 obra/superpowers `v7.0.2`） |
 | 运行时依赖 | 无。只用 Node 内置模块，不引入任何第三方依赖 |
 | Node.js | 本次实测使用 DSH 随附 Node `v24.21.0`；DSH 自身未声明 `engines`，本插件也未限制 |
 
@@ -245,7 +245,7 @@ check-dsh-compat: OK — runtime contracts match; static contract was not availa
 
 ## 上游同步
 
-当前同步的上游版本：**obra/superpowers v7.0.0**（记录在 `package.json` 的
+当前同步的上游版本：**obra/superpowers v7.0.2**（记录在 `package.json` 的
 `dsh.superpowersUpstream`）。
 
 `skills/` 是**生成产物**，不要手改。同步逻辑写在两个地方，改它们再重跑即可：
@@ -258,12 +258,12 @@ check-dsh-compat: OK — runtime contracts match; static contract was not availa
 
 ```sh
 # 1. 取上游对应版本的源码；每个 tag 使用独立目录，避免旧文件残留
-mkdir -p .upstream/superpowers-v7.0.0
-curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v7.0.0 \
-  | tar -xz -C .upstream/superpowers-v7.0.0 --strip-components=1
+mkdir -p .upstream/superpowers-v7.0.2
+curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v7.0.2 \
+  | tar -xz -C .upstream/superpowers-v7.0.2 --strip-components=1
 
 # 2. 重放同步；package.json 的 dsh.superpowersUpstream 必须与源码版本一致
-node scripts/sync-from-upstream.mjs .upstream/superpowers-v7.0.0
+node scripts/sync-from-upstream.mjs .upstream/superpowers-v7.0.2
 
 # 3. 校验（provider 能列出全部技能、frontmatter 合法、没有悬空引用）
 node scripts/verify-skills.mjs
@@ -272,13 +272,17 @@ node scripts/verify-skills.mjs
 node scripts/check-dsh-compat.mjs
 ```
 
-同步脚本会在版本记录不匹配、技能集合、跨 harness 参考文件或适配锚点变化时停止，且不会替换当前 `skills/`。提交前旧目录会暂存为恢复目录；新目录换入失败会尝试还原，若发现遗留恢复目录则停止并要求先人工检查。GitHub Actions 会在 Linux 与 Windows 上重跑固定 v7.0.0 同步、技能校验，并检测生成目录漂移。
+同步脚本会在版本记录不匹配、技能集合、跨 harness 参考文件或适配锚点变化时停止，且不会替换当前 `skills/`。提交前旧目录会暂存为恢复目录；新目录换入失败会尝试还原，若发现遗留恢复目录则停止并要求先人工检查。GitHub Actions 会在 Linux 与 Windows 上重跑固定 v7.0.2 同步、技能校验，并检测生成目录漂移。锚点失配时会一次列出**全部**缺失项，而不是只报第一个。
 
-本次同步（v7.0.0）带来的上游变化：
+本次同步（v7.0.0 → v7.0.2）带来的上游变化：
 
-- `brainstorming` 技能经过大幅改写，项目设计流程新增独立的 builder review 阶段，并随技能分发 `builder-check-prompt.md`。
-- 上游已在 `brainstorming/SKILL.md` 中直接改用相对路径 `visual-companion.md`，因此 DSH 不再需要对此做文本转换；DSH 的 Windows 说明仍由同步转换补入。
-- 技能目录仍为 15 个技能；同步脚本会在上游技能集合、跨 harness 参考文件或适配锚点变化时停止，要求先审查再同步。
+- `brainstorming` 在 v7.0.1 / v7.0.2 两次调整：先问"为什么"、减少填充性问题、能给出选项时给选项 + 建议、需求没有开放问题时先给短设计稿。
+- `subagent-driven-development` 重构为 `references/`（batching、cannot-verify、final-review、fix-loop、handling-reports、preflight、resuming）+ 新增 `scripts/sdd-repo`，helper 脚本改为"按绝对路径调用"；原先那段 hook 安装示例已被上游删除，本 port 对应的适配转换随之移除。
+- `writing-skills` 拆分出 `references/`（bulletproofing、discovery、flowcharts，以及挪进去的示例文档）。
+- `executing-plans` 精简；`task-start` / `task-done` / `sdd-workspace` / `review-package` 改为按绝对路径调用（本 port 仍要求经 `bash` 调用）。
+- 上游删除了 `systematic-debugging` 下的开发期测试/日志文件（`CREATION-LOG.md`、`test-*.md`）。
+- 上游修了 6 个 harness 的引导注入问题（Copilot on Windows PowerShell、Muse 的 dash、Hermes 子 agent、Pi 每轮重注、OpenCode 裸技能名与 `EXTREMELY_IMPORTANT` 误判）；本 port 的进程内注入本来就不受影响。
+- 技能目录仍为 15 个技能，但 `skills/` 文件数 68 → 74（上游 80 个文件里跳过 7 个跨 harness 参考文件，另加 1 个 DSH 专属 `dsh-tools.md`）；同步脚本会在版本、技能集合、参考文件集合或适配锚点变化时停止。
 
 ## 移植说明
 
@@ -317,12 +321,13 @@ node scripts/check-dsh-compat.mjs
   多 zstd frame 拼接，需按 frame 解压）。
 - `brainstorming` 的视觉伴侣补充了 Windows 说明：Node 服务
   （`scripts/server.cjs`）全平台可跑；`.sh` 辅助脚本仅限 bash。
-- `brainstorming` 在 v7.0.0 重写后，上游正文已直接写 `visual-companion.md`
-  这个裸相对名，所以本 port 原先那条「把 `skills/brainstorming/...` 改写成
-  裸相对名」的适配已删除（同步脚本里留有 NOTE，若上游将来回退再加回）。
-- `writing-skills/examples/CLAUDE_MD_TESTING.md` 原样保留（上游示例文档，
-  里面仍是 Claude Code 路径），只为让 `testing-skills-with-subagents.md`
-  的引用不断链。
+- `brainstorming` 自 v7.0.0 起重写（v7.0.1 / v7.0.2 又调整了问法与选项策略），
+  上游正文已直接写 `visual-companion.md` 这个裸相对名，所以本 port 原先那条
+  「把 `skills/brainstorming/...` 改写成裸相对名」的适配已删除
+  （同步脚本里留有 NOTE，若上游将来回退再加回）。
+- `writing-skills/references/CLAUDE_MD_TESTING.md` 原样保留（上游示例文档，
+  从 `examples/` 挪到了 `references/`，里面仍是 Claude Code 路径），只为让
+  `testing-skills-with-subagents.md` 的引用不断链。
 
 ## 添加自己的技能
 

@@ -39,7 +39,7 @@ user configuration.
 A **plugin bundle** for DeepSeek Harness (DSH). Installing it registers the
 15 skills below into the host skill registry, so every agent session in your
 profile sees them in its skill catalog and can load them with the `skill`
-tool. Skill content is synced from upstream **obra/superpowers v7.0.0**.
+tool. Skill content is synced from upstream **obra/superpowers v7.0.2**.
 
 ### Simplest: one command
 
@@ -74,7 +74,7 @@ The npm package `superpowers-dsh@0.3.0` is published by the upstream parent (ski
 dsh plugin --profile web add superpowers-dsh@0.3.0
 ```
 
-To install this repository's v0.3.1 / upstream skill v7.0.0, use the GitHub command above. This fork has not published a separate npm package.
+To install this repository's v0.3.2 / upstream skill v7.0.2, use the GitHub command above. This fork has not published a separate npm package.
 
 ### Install from GitHub
 
@@ -139,16 +139,16 @@ dsh plugin --profile web remove superpowers-dsh
 
 ## DSH version compatibility
 
-**Latest runtime check (2026-10-14):** the real `SkillRegistry` from `@deepseek-ai/dsh-skill 0.2.0-rc.2` inside the local DeepSeek Harness `app.asar` listed and loaded all 15 skills. The plugin rank (550) is below the bundled rank (600). The archive omits the `.d.ts` file at the path declared by the SDK manifest, so the static type-contract check was explicitly skipped.
+**Latest runtime check (2026-11-13):** the real `SkillRegistry` from `@deepseek-ai/dsh-skill 0.2.2-rc.3` inside the local DeepSeek Harness `app.asar` listed and loaded all 15 skills. The plugin rank (550) is below the bundled rank (600). The archive omits the `.d.ts` file at the path declared by the SDK manifest, so the static type-contract check was explicitly skipped.
 
 ### Support matrix
 
 | Check | Result |
 | --- | --- |
 | DSH interfaces this plugin uses | `ctx.skills.registerProvider(...)` (skill provider registration) and `dsh.bundle.patch` (a bundle mounting its own `cordis.patch.yml`) |
-| Current runtime check | The real `SkillRegistry` from `@deepseek-ai/dsh-skill 0.2.0-rc.2` listed 15 skills; `get()` returned each body and directory resource base |
+| Current runtime check | The real `SkillRegistry` from `@deepseek-ai/dsh-skill 0.2.2-rc.3` listed 15 skills; `get()` returned each body and directory resource base (re-checked after DSH moved from `0.2.0-rc.2` to `0.2.2-rc.3`) |
 | Static type contract | `lib/types/index.d.ts` is absent from the `app.asar` package; the checker reports this as skipped, not as verified |
-| This plugin's version | `0.3.1` (local fork, not separately published; skill content synced from obra/superpowers `v7.0.0`) |
+| This plugin's version | `0.3.2` (local fork, not separately published; skill content synced from obra/superpowers `v7.0.2`) |
 | Runtime dependencies | None. Node built-ins only |
 | Node.js | The check used the DSH-bundled Node `v24.21.0`; neither DSH nor this plugin declares an `engines` range |
 
@@ -265,7 +265,7 @@ Pass an explicit directory or `--require` to make a missing SDK an error, or set
 
 ## Upstream sync
 
-Currently synced upstream version: **obra/superpowers v7.0.0** (recorded in
+Currently synced upstream version: **obra/superpowers v7.0.2** (recorded in
 `package.json` as `dsh.superpowersUpstream`).
 
 `skills/` is **generated output** — do not hand-edit it. The sync lives in two
@@ -280,12 +280,12 @@ places; change those and re-run:
 
 ```sh
 # 1. Fetch the pinned upstream release into a tag-specific directory so old files cannot linger
-mkdir -p .upstream/superpowers-v7.0.0
-curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v7.0.0 \
-  | tar -xz -C .upstream/superpowers-v7.0.0 --strip-components=1
+mkdir -p .upstream/superpowers-v7.0.2
+curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v7.0.2 \
+  | tar -xz -C .upstream/superpowers-v7.0.2 --strip-components=1
 
 # 2. Replay the sync; package.json dsh.superpowersUpstream must match the checkout
-node scripts/sync-from-upstream.mjs .upstream/superpowers-v7.0.0
+node scripts/sync-from-upstream.mjs .upstream/superpowers-v7.0.2
 
 # 3. Verify (provider lists every skill, frontmatter is valid, no dangling refs)
 node scripts/verify-skills.mjs
@@ -294,13 +294,17 @@ node scripts/verify-skills.mjs
 node scripts/check-dsh-compat.mjs
 ```
 
-The sync stops without replacing `skills/` when the recorded version, upstream skill set, harness-reference set, or any adaptation anchor does not match. During replacement it keeps the previous tree as a recovery directory and rolls it back if installing the staged tree fails; if a recovery directory is already present, it stops for manual inspection. GitHub Actions reruns the pinned v7.0.0 sync and skill checks on Linux and Windows, then fails if generated files drift.
+The sync stops without replacing `skills/` when the recorded version, upstream skill set, harness-reference set, or any adaptation anchor does not match. Each adaptation is an asserted string rewrite, and a failed check lists **every** missing anchor in one run rather than only the first. During replacement it keeps the previous tree as a recovery directory and rolls it back if installing the staged tree fails; if a recovery directory is already present, it stops for manual inspection. GitHub Actions reruns the pinned v7.0.2 sync and skill checks on Linux and Windows, then fails if generated files drift.
 
-What changed in this v7.0.0 sync:
+What changed in this v7.0.0 → v7.0.2 sync:
 
-- `brainstorming` was substantially rewritten. Its project-design flow adds a separate builder review and ships the new `builder-check-prompt.md` alongside the skill.
-- Upstream now uses the relative path `visual-companion.md` directly in `brainstorming/SKILL.md`, so the port no longer needs a rewrite for that path; the DSH-specific Windows note is still applied by the sync transform.
-- The catalog remains at 15 skills. The sync script stops for review if the upstream skill set, harness-reference files, or any remaining adaptation anchor changes.
+- `brainstorming` was retuned twice (v7.0.1, v7.0.2): ask why first, fewer filler questions, offer options plus a recommendation when a choice is nameable, and give a short design when the request leaves nothing open.
+- `subagent-driven-development` was restructured into `references/` (batching, cannot-verify, final-review, fix-loop, handling-reports, preflight, resuming) with the new `scripts/sdd-repo`, and its helpers are now invoked by absolute path. The hook-installation example this port used to adapt was removed upstream, so that transform is gone.
+- `writing-skills` split out `references/` (bulletproofing, discovery, flowcharts, plus the example documents moved into it).
+- `executing-plans` was slimmed; `task-start` / `task-done` / `sdd-workspace` / `review-package` are now invoked by absolute path (this port still requires going through `bash`).
+- Upstream deleted the skill-authoring test/log files under `systematic-debugging` (`CREATION-LOG.md`, `test-*.md`).
+- Upstream fixed bootstrap injection on six harnesses (Copilot on Windows PowerShell, Muse on dash, Hermes subagents, Pi re-injecting every prompt, OpenCode bare skill ids and the `EXTREMELY_IMPORTANT` false positive). This port's in-process injection was never affected.
+- The catalog remains at 15 skills, but `skills/` grew from 68 to 74 files (80 upstream files minus the 7 per-harness references, plus the DSH-only `dsh-tools.md`). The sync still stops for review when the version, skill set, reference set, or any adaptation anchor changes.
 
 ## Porting notes
 
@@ -344,13 +348,13 @@ What changed in this v7.0.0 sync:
   concatenated zstd frames that need frame-by-frame decompression).
 - `brainstorming`'s visual companion adds a Windows note: the Node server
   (`scripts/server.cjs`) runs everywhere; the `.sh` helpers are bash-only.
-- After the v7.0.0 rewrite, upstream itself names the companion as a bare
+- Since the v7.0.0 rewrite (v7.0.1 / v7.0.2 retuned the wording but kept this), upstream itself names the companion as a bare
   `visual-companion.md`, so this port's old rewrite of
   `skills/brainstorming/visual-companion.md` is gone (the sync script carries a
   NOTE; re-add it if a future release regresses to the path form).
-- `writing-skills/examples/CLAUDE_MD_TESTING.md` ships verbatim (an upstream
-  example document that still uses Claude Code paths), so the reference from
-  `testing-skills-with-subagents.md` does not dangle.
+- `writing-skills/references/CLAUDE_MD_TESTING.md` ships verbatim (an upstream
+  example document moved from `examples/` that still uses Claude Code paths), so
+  the reference from `testing-skills-with-subagents.md` does not dangle.
 
 ## Adding your own skills
 

@@ -17,12 +17,12 @@
  *
  * Usage:
  *   node scripts/sync-from-upstream.mjs <path-to-superpowers-checkout>
- *   node scripts/sync-from-upstream.mjs .upstream/superpowers-v7.0.0
+ *   node scripts/sync-from-upstream.mjs .upstream/superpowers-v7.0.2
  *
  * Get a clean, tag-specific checkout with:
- *   mkdir -p .upstream/superpowers-v7.0.0
- *   curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v7.0.0 \
- *     | tar -xz -C .upstream/superpowers-v7.0.0 --strip-components=1
+ *   mkdir -p .upstream/superpowers-v7.0.2
+ *   curl -L https://codeload.github.com/obra/superpowers/tar.gz/refs/tags/v7.0.2 \
+ *     | tar -xz -C .upstream/superpowers-v7.0.2 --strip-components=1
  *
  * A missing anchor fails the run loudly: upstream rewrote text this port
  * depends on, so a human must decide what the DSH wording becomes.
@@ -160,8 +160,9 @@ const TRANSFORMS = [
   {
     name: 'executing-plans: invoke task-start through bash',
     file: 'executing-plans/SKILL.md',
-    find: "Run this skill's `scripts/task-start PLAN_FILE N`.",
-    replace: "Run this skill's `bash scripts/task-start PLAN_FILE N`."
+    // v7.0.2 appended " by its absolute path," to this sentence.
+    find: "Run this skill's `scripts/task-start PLAN_FILE N` by its absolute path,",
+    replace: "Run this skill's `bash scripts/task-start PLAN_FILE N` by its absolute path,"
   },
   {
     name: 'executing-plans: invoke task-done through bash',
@@ -195,12 +196,6 @@ const TRANSFORMS = [
       DSH_HOME + "/skills/` (user level, discovered automatically by `skill-filesystem`), the project `.dsh/skills/` / " +
       '`.agents/skills/` roots, or — for packaged skills — the `skills/` directory inside a plugin bundle like this ' +
       'one. See [dsh-tools.md](../using-superpowers/references/dsh-tools.md) for the full mechanism.'
-  },
-  {
-    name: 'subagent-driven-development: hook example uses the DSH home',
-    file: 'subagent-driven-development/SKILL.md',
-    find: 'You: "User level (~/.config/superpowers/hooks/)"',
-    replace: 'You: "Install the hook at the user level (' + DSH_HOME + ')"'
   },
   {
     name: 'diagnosing-superpowers: case workspace lives under the DSH home',
@@ -276,13 +271,20 @@ function fail(message) {
   process.exit(1)
 }
 
+// An upstream release can break several anchors at once. Collect every miss so
+// one run reports the whole list instead of stopping at the first one.
+const missedAnchors = []
+
 /** Apply every transform whose `file` matches, asserting the anchor exists. */
 function applyTransforms(rel, text, applied) {
   for (const t of TRANSFORMS) {
     if (t.file !== rel) continue
     if (t.find === t.replace) continue
     const count = text.split(t.find).length - 1
-    if (count === 0) fail(`anchor missing in ${rel} for "${t.name}"\n  find: ${JSON.stringify(t.find.slice(0, 120))}`)
+    if (count === 0) {
+      missedAnchors.push(`${rel} for "${t.name}"\n    find: ${JSON.stringify(t.find.slice(0, 160))}`)
+      continue
+    }
     if (count > 1) fail(`anchor matched ${count} times in ${rel} for "${t.name}"`)
     text = text.replace(t.find, t.replace)
     applied.add(t.name)
@@ -381,6 +383,13 @@ for (const rel of upstreamFiles) {
 
   await writeFile(target, text, 'utf8')
   copied++
+}
+
+if (missedAnchors.length > 0) {
+  fail(
+    `anchor(s) missing — re-derive these transforms against the new upstream text:\n  ` +
+      missedAnchors.join('\n  ')
+  )
 }
 
 // DSH-only files replace upstream text wholesale.
